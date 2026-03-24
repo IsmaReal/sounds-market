@@ -11,10 +11,9 @@ interface WaveformProps {
 export function Waveform({
   data,
   progress,
-  isPlaying: _isPlaying,
   onSeek,
   className = "",
-}: WaveformProps) {
+}: Omit<WaveformProps, "isPlaying"> & { isPlaying?: boolean }) {
   const bars = data.length;
 
   function handleClick(e: React.MouseEvent<HTMLDivElement>) {
