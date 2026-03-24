@@ -12,7 +12,6 @@ interface AudioPlayerProps {
 }
 
 export function AudioPlayer({ sample, compact = false }: AudioPlayerProps) {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0); // 0-1
   const [currentTime, setCurrentTime] = useState(0);

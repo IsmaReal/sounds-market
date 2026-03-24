@@ -31,7 +31,6 @@ export function Waveform({
     >
       {data.map((value, i) => {
         const filled = i / bars <= progress;
-        const isActive = isPlaying && filled && i / bars >= progress - 0.05;
         return (
           <div
             key={i}

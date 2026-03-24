@@ -6,20 +6,14 @@ import { AudioPlayer } from "./audio-player";
 import { Waveform } from "./waveform";
 import { formatCount } from "@/lib/utils";
 import type { Sample } from "@/lib/types";
-import { useState } from "react";
-
 interface SampleCardProps {
   sample: Sample;
 }
 
 export function SampleCard({ sample }: SampleCardProps) {
-  const [isHovered, setIsHovered] = useState(false);
-
   return (
     <div
       className="group relative rounded-xl border border-border bg-card p-4 hover:border-primary/40 hover:bg-card/80 transition-all duration-200"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       {/* Header row */}
       <div className="flex items-start gap-3 mb-3">
