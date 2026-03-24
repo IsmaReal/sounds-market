@@ -11,7 +11,7 @@ interface WaveformProps {
 export function Waveform({
   data,
   progress,
-  isPlaying,
+  isPlaying: _isPlaying,
   onSeek,
   className = "",
 }: WaveformProps) {
