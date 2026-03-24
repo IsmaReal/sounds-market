@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --no-src-dir --import-alias \"@/*\" --yes)",
+      "Bash(npm --version)",
+      "Bash(echo \"PATH: $PATH\")",
+      "Read(//c/Program Files/**)",
+      "Read(//c/Users/ismad/AppData/Roaming/**)",
+      "Read(//c/Users/ismad/.nvm/versions/**)",
+      "Bash(git -C C:/apps/sounds_market status)"
+    ]
+  }
+}
