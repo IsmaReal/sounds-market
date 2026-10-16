@@ -33,8 +33,8 @@ Arriba de la grilla:
 
 - **Grid**: largo del patrón (1, 2, 4 u 8 beats; por defecto 4).
 - **Snap**: 1/4, 1/8, 1/16, 1/32 y tresillos.
-- **Curve**: qué tan rápido sigue el sonido a la envolvente (*Hard* para cortes secos,
-  *Smooth* por defecto, *Soft* para transiciones suaves sin clicks).
+- **Curve**: suavizado de los saltos de la envolvente (*Hard* 0,5 ms, *Smooth* 3 ms, *Soft*
+  15 ms). Solo se nota en los cortes verticales (gates): evita clicks.
 
 ## Presets
 
@@ -64,9 +64,16 @@ la envolvente del módulo seleccionado y, si el preset lo define, sus parámetro
 Los básicos siguen la figura musical: si cambiás el **Grid**, se regeneran para que "Gate 1/8"
 siga siendo de corcheas.
 
-Todo se guarda dentro del proyecto del DAW. Cuando el DAW está en **pausa**, el patrón queda
-quieto en la posición del cursor; en la versión Standalone (sin transporte) corre solo al
-tempo interno.
+Todo se guarda dentro del proyecto del DAW.
+
+## Dry/Wet y pausa
+
+- **DRY/WET** (abajo del rack) mezcla la señal original con la salida de todo el rack. Se puede
+  automatizar desde el DAW.
+- Cuando el DAW está en **pausa** (o el plugin está puenteado), los efectos dejan de actuar: se
+  apagan con un fundido de ~10 ms y se borran sus colas, así no queda sonando la reverb. Al
+  volver a play arrancan limpios. En la versión Standalone (sin transporte) el patrón corre
+  solo al tempo interno.
 
 ## Estructura
 

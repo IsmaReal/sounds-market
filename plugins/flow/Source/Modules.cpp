@@ -58,7 +58,15 @@ void Module::process (juce::AudioBuffer<float>& buffer, const double* phases, in
 {
     envelope.pullTable();
 
-    if (! enabled.load() || numSamples <= 0 || numSamples > (int) envelopeBuffer.size())
+    // Al volver a encenderlo arranca limpio, sin restos de cola de antes de apagarlo.
+    const auto isEnabled = enabled.load();
+
+    if (isEnabled && ! wasEnabled)
+        reset();
+
+    wasEnabled = isEnabled;
+
+    if (! isEnabled || numSamples <= 0 || numSamples > (int) envelopeBuffer.size())
         return;
 
     for (int i = 0; i < numSamples; ++i)
@@ -74,6 +82,12 @@ void Module::process (juce::AudioBuffer<float>& buffer, const double* phases, in
 
     currentEnvelopeValue.store (smoothedValue);
     processEffect (buffer, envelopeBuffer.data(), numSamples);
+}
+
+void Module::reset() noexcept
+{
+    smoothedValue = -1.0f;
+    resetEffect();
 }
 
 //==============================================================================
@@ -117,6 +131,12 @@ void ReverbModule::prepareEffect (double newSampleRate, int maxBlockSize, int nu
     toneState = {};
     lastParameters = { -1.0f, -1.0f, -1.0f };
     updateReverbParameters();
+}
+
+void ReverbModule::resetEffect() noexcept
+{
+    reverb.reset();
+    toneState = {};
 }
 
 void ReverbModule::updateReverbParameters() noexcept

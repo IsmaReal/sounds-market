@@ -105,9 +105,9 @@ private:
     std::vector<std::unique_ptr<ModuleCard>> cards;
     AddModuleButton addButton;
 
-    static constexpr int cardHeight = 136;
+    static constexpr int cardHeight = 122;
     static constexpr int gap = 14;
-    static constexpr int addHeight = 150;
+    static constexpr int addHeight = 135;
 };
 
 } // namespace flow::ui

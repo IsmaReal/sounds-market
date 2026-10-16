@@ -56,6 +56,9 @@ public:
     float getParameter (int index) const noexcept { return parameters[(size_t) index].load(); }
     void setParameter (int index, float value) noexcept { parameters[(size_t) index].store (juce::jlimit (0.0f, 1.0f, value)); }
 
+    // Borra el estado interno (colas de reverb, suavizado). Seguro en el hilo de audio.
+    void reset() noexcept;
+
     // Último valor de la envolvente aplicado (para la UI).
     float getCurrentEnvelopeValue() const noexcept { return currentEnvelopeValue.load(); }
 
@@ -64,6 +67,7 @@ protected:
 
     virtual void prepareEffect (double sampleRate, int maxBlockSize, int numChannels) = 0;
     virtual void processEffect (juce::AudioBuffer<float>& buffer, const float* envelopeValues, int numSamples) noexcept = 0;
+    virtual void resetEffect() noexcept {}
 
     std::array<std::atomic<float>, maxParameters> parameters {};
     double sampleRate = 44100.0;
@@ -71,6 +75,7 @@ protected:
 private:
     std::vector<float> envelopeBuffer;
     float smoothedValue = -1.0f;
+    bool wasEnabled = true;
     std::atomic<float> currentEnvelopeValue { 0.0f };
 };
 
@@ -108,6 +113,7 @@ public:
 private:
     void prepareEffect (double sampleRate, int maxBlockSize, int numChannels) override;
     void processEffect (juce::AudioBuffer<float>&, const float*, int) noexcept override;
+    void resetEffect() noexcept override;
     void updateReverbParameters() noexcept;
 
     juce::Reverb reverb;

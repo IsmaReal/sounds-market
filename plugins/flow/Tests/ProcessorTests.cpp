@@ -99,7 +99,7 @@ int main()
     runConstantAt (2.5);
     check (std::abs (processor.getDisplayPhase() - pausedPhase) < 1.0e-6f, "pausa: la barra no avanza");
     check (! processor.isClockRunning(), "pausa: reloj detenido");
-    check (near (runConstantAt (2.5), 0.0f), "pausa: aplica el valor de la posición del cursor");
+    check (near (runConstantAt (2.5), 1.0f), "pausa: los efectos dejan de actuar");
     playHead.playing = true;
     runConstantAt (0.0);
     check (processor.isClockRunning(), "reproduciendo: reloj en marcha");
@@ -153,6 +153,36 @@ int main()
         silentTail = juce::jmax (silentTail, runImpulseAt (2.1 + i * 0.02, false));
     check (silentTail < 1.0e-4f, "reverb: silencio cuando la envolvente está en cero");
 
+    // Al pausar el DAW se corta la cola de la reverb.
+    runImpulseAt (0.0, false);
+    runImpulseAt (0.02, true);
+    check (runImpulseAt (0.04, false) > 1.0e-3f, "reverb: cola sonando antes de la pausa");
+    playHead.playing = false;
+    runImpulseAt (0.06, false); // fundido de salida (~10 ms)
+    runImpulseAt (0.06, false);
+    check (runImpulseAt (0.06, false) < 1.0e-6f, "pausa: la cola de la reverb se corta");
+    playHead.playing = true;
+    check (runImpulseAt (0.08, false) < 1.0e-6f, "al volver a play no quedan restos de la cola");
+
+    // Dry/Wet general: en 0 % la señal sale limpia; en 50 %, mitad y mitad.
+    auto& dryWet = processor.getDryWetParameter();
+    rack[0]->envelope.setNodes (halfGate);
+    rack[1]->enabled.store (false);
+    dryWet.setValueNotifyingHost (0.0f);
+    for (int i = 0; i < 10; ++i)
+        runConstantAt (2.5); // deja que se asiente el suavizado
+    check (near (runConstantAt (2.5), 1.0f), "dry/wet 0 %: señal original");
+    dryWet.setValueNotifyingHost (0.5f);
+    for (int i = 0; i < 10; ++i)
+        runConstantAt (2.5);
+    check (near (runConstantAt (2.5), 0.5f), "dry/wet 50 %");
+    dryWet.setValueNotifyingHost (1.0f);
+    for (int i = 0; i < 10; ++i)
+        runConstantAt (2.5);
+    check (near (runConstantAt (2.5), 0.0f), "dry/wet 100 %: solo procesado");
+    rack[1]->enabled.store (true);
+    dryWet.setValueNotifyingHost (0.7f);
+
     //==============================================================================
     // Reordenar, guardar y recuperar el estado.
     rack[1]->setParameter (flow::ReverbModule::size, 0.25f);
@@ -177,6 +207,7 @@ int main()
     check (! restoredRack.empty() && near (restoredRack[0]->mix.load(), 0.6f), "estado: mix");
     check (! restoredRack.empty() && restoredRack[0]->envelope.getNodes().size() == 4, "estado: nodos");
     check (restored.getSnapPerBeat() == 2, "estado: snap");
+    check (near (restored.getDryWetParameter().get(), 70.0f, 0.2f), "estado: dry/wet");
 
     // Quitar módulos.
     processor.removeModule (0);

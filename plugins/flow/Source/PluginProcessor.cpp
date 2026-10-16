@@ -21,6 +21,7 @@ namespace
     const juce::Identifier versionId { "version" };
     const juce::Identifier presetId { "preset" };
     const juce::Identifier rackPresetId { "rackPreset" };
+    const juce::Identifier dryWetId { "dryWet" };
 
     juce::ValueTree nodesToTree (const std::vector<beatshaper::Node>& nodes)
     {
@@ -62,6 +63,13 @@ FlowProcessor::FlowProcessor()
                           .withInput ("Input", juce::AudioChannelSet::stereo(), true)
                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true))
 {
+    auto parameter = std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "dryWet", 1 }, "Dry/Wet",
+        juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f,
+        juce::AudioParameterFloatAttributes().withLabel ("%"));
+    dryWet = parameter.get();
+    addParameter (parameter.release());
+
     resetRack();
 }
 
@@ -73,7 +81,12 @@ void FlowProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     currentSampleRate = sampleRate;
     maxBlockSize = juce::jmax (1, samplesPerBlock);
     phaseBuffer.assign ((size_t) maxBlockSize, 0.0);
+    dryBuffer.setSize (juce::jmax (1, getTotalNumOutputChannels()), maxBlockSize);
+    dryWetSmoothed.reset (sampleRate, 0.02);
+    dryWetSmoothed.setCurrentAndTargetValue (dryWet->get() * 0.01f);
     internalBeatPosition = 0.0;
+    activeGain = 1.0f;
+    modulesCleared = false;
 
     const juce::ScopedLock lock (rackLock);
 
@@ -147,6 +160,21 @@ void FlowProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
     const auto smoothingMs = curveOptionsMs[juce::jlimit (0, 2, curveMode.load())];
     const auto smoothing = (float) std::exp (-1.0 / (smoothingMs * 0.001 * currentSampleRate));
 
+    // Si el plugin estuvo puenteado, arrancamos sin restos y con un fundido de entrada.
+    if (resetPending.exchange (false))
+    {
+        if (activeChain != nullptr)
+            for (auto& module : *activeChain)
+                module->reset();
+
+        activeGain = 0.0f;
+    }
+
+    // En pausa los efectos se apagan (fundido de ~10 ms) y se borran sus colas.
+    const auto activeTarget = running ? 1.0f : 0.0f;
+    const auto activeStep = (float) (1.0 / (0.01 * currentSampleRate));
+    dryWetSmoothed.setTargetValue (dryWet->get() * 0.01f);
+
     // Procesamos en tramos de como mucho maxBlockSize por si el host manda bloques más grandes.
     for (int start = 0; start < numSamples; start += maxBlockSize)
     {
@@ -163,18 +191,63 @@ void FlowProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
             beatPosition += beatsPerSample;
         }
 
-        if (activeChain != nullptr)
-        {
-            juce::AudioBuffer<float> section (buffer.getArrayOfWritePointers(), numChannels, start, length);
+        displayPhase.store ((float) phaseBuffer[(size_t) length - 1]);
 
-            for (auto& module : *activeChain)
-                module->process (section, phaseBuffer.data(), length, smoothing);
+        const auto fullyOff = activeGain <= 0.0f && activeTarget <= 0.0f;
+
+        if (fullyOff || activeChain == nullptr)
+        {
+            // Los efectos no actúan: la señal pasa limpia. Borramos las colas una sola vez.
+            if (fullyOff && ! modulesCleared && activeChain != nullptr)
+            {
+                for (auto& module : *activeChain)
+                    module->reset();
+
+                modulesCleared = true;
+            }
+
+            dryWetSmoothed.skip (length);
+            continue;
         }
 
-        displayPhase.store ((float) phaseBuffer[(size_t) length - 1]);
+        modulesCleared = false;
+        juce::AudioBuffer<float> section (buffer.getArrayOfWritePointers(), numChannels, start, length);
+
+        for (int ch = 0; ch < numChannels; ++ch)
+            dryBuffer.copyFrom (ch, 0, section, ch, 0, length);
+
+        for (auto& module : *activeChain)
+            module->process (section, phaseBuffer.data(), length, smoothing);
+
+        // Mezcla final: seco + (procesado - seco) * Dry/Wet * fundido de pausa.
+        for (int i = 0; i < length; ++i)
+        {
+            if (activeGain < activeTarget)
+                activeGain = juce::jmin (activeTarget, activeGain + activeStep);
+            else if (activeGain > activeTarget)
+                activeGain = juce::jmax (activeTarget, activeGain - activeStep);
+
+            const auto wet = dryWetSmoothed.getNextValue() * activeGain;
+
+            for (int ch = 0; ch < numChannels; ++ch)
+            {
+                const auto dry = dryBuffer.getSample (ch, i);
+                auto* out = section.getWritePointer (ch);
+                out[i] = dry + (out[i] - dry) * wet;
+            }
+        }
     }
 
     internalBeatPosition = std::fmod (beatPosition, beats);
+}
+
+void FlowProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+{
+    // Puenteado: la señal pasa tal cual y, al volver, los efectos arrancan sin colas viejas.
+    for (auto ch = getTotalNumInputChannels(); ch < getTotalNumOutputChannels(); ++ch)
+        buffer.clear (ch, 0, buffer.getNumSamples());
+
+    resetPending.store (true);
 }
 
 //==============================================================================
@@ -313,6 +386,7 @@ juce::ValueTree FlowProcessor::createStateTree() const
     state.setProperty (curveModeId, curveMode.load(), nullptr);
     state.setProperty (selectedId, selectedModule.load(), nullptr);
     state.setProperty (rackPresetId, getRackPresetName(), nullptr);
+    state.setProperty (dryWetId, dryWet->get(), nullptr);
 
     for (const auto& module : getRack())
     {
@@ -373,6 +447,7 @@ void FlowProcessor::restoreStateTree (const juce::ValueTree& state)
     setPatternBeats ((int) state.getProperty (gridId, 4));
     setSnapPerBeat ((int) state.getProperty (snapId, 4));
     setCurveMode ((int) state.getProperty (curveModeId, 1));
+    dryWet->setValueNotifyingHost (dryWet->convertTo0to1 ((float) state.getProperty (dryWetId, 100.0f)));
 
     const juce::ScopedLock lock (rackLock);
     rackPresetName = state.getProperty (rackPresetId, "Init").toString();

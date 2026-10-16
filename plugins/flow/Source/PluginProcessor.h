@@ -24,7 +24,9 @@ public:
     void releaseResources() override {}
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     using AudioProcessor::processBlock;
+    using AudioProcessor::processBlockBypassed;
 
     //==============================================================================
     juce::AudioProcessorEditor* createEditor() override;
@@ -87,6 +89,9 @@ public:
     int getCurveMode() const noexcept { return curveMode.load(); }
     void setCurveMode (int mode) noexcept { curveMode.store (juce::jlimit (0, 2, mode)); }
 
+    // Dry/Wet general (parámetro automatizable desde el DAW), en %.
+    juce::AudioParameterFloat& getDryWetParameter() noexcept { return *dryWet; }
+
     // Posición actual en el patrón [0, 1) y si el patrón está avanzando, para la UI.
     float getDisplayPhase() const noexcept { return displayPhase.load(); }
     bool isClockRunning() const noexcept { return clockRunning.load(); }
@@ -116,6 +121,16 @@ private:
     double internalBeatPosition = 0.0;
     double lastBpm = 120.0;
     std::vector<double> phaseBuffer;
+
+    juce::AudioParameterFloat* dryWet = nullptr;
+    juce::SmoothedValue<float> dryWetSmoothed;
+    juce::AudioBuffer<float> dryBuffer;
+
+    // Cuando el DAW se pausa (o el plugin se puentea) los efectos se apagan con un
+    // fundido corto y se borran sus colas; al volver arrancan limpios.
+    float activeGain = 1.0f;
+    bool modulesCleared = false;
+    std::atomic<bool> resetPending { false };
 
     std::atomic<float> displayPhase { 0.0f };
     std::atomic<bool> clockRunning { false };

@@ -83,7 +83,7 @@ void ModuleCard::paint (juce::Graphics& g)
     g.setColour (colours::text.withAlpha (on ? 1.0f : 0.45f));
     g.setFont (spacedFont (19.0f, true, 0.2f));
     g.drawText (juce::String (module->getName()).toUpperCase(),
-                juce::Rectangle<int> (100, 22, getWidth() - 150, 34), juce::Justification::centredLeft);
+                juce::Rectangle<int> (100, 18, getWidth() - 150, 34), juce::Justification::centredLeft);
 
     // Etiqueta MIX
     g.setColour (colours::textMuted.withAlpha (on ? 1.0f : 0.5f));
@@ -94,9 +94,9 @@ void ModuleCard::paint (juce::Graphics& g)
 
 void ModuleCard::resized()
 {
-    powerButton.setBounds (52, 22, 34, 34);
+    powerButton.setBounds (52, 18, 34, 34);
     removeButton.setBounds (getWidth() - 36, 10, 24, 24);
-    mixSlider.setBounds (108, getHeight() - 58, getWidth() - 124, 32);
+    mixSlider.setBounds (108, getHeight() - 50, getWidth() - 124, 32);
 }
 
 void ModuleCard::mouseDown (const juce::MouseEvent& e)

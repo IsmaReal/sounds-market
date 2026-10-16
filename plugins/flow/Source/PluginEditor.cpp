@@ -11,6 +11,7 @@ namespace
     constexpr int controlsHeight = 186;
     constexpr int userPresetIdOffset = 1000;
     constexpr int margin = 18;
+    constexpr int masterHeight = 64;
 
     const juce::StringArray gridNames { "1 Beat", "2 Beats", "4 Beats", "8 Beats" };
     const juce::StringArray snapNames { "Off", "1/4", "1/8", "1/16", "1/32", "1/8 T", "1/16 T" };
@@ -33,8 +34,8 @@ namespace
     }
 }
 
-FlowEditor::FlowEditor (FlowProcessor& p)
-    : AudioProcessorEditor (p), processor (p)
+FlowView::FlowView (FlowProcessor& p)
+    : processor (p)
 {
     setLookAndFeel (&lookAndFeel);
 
@@ -61,7 +62,7 @@ FlowEditor::FlowEditor (FlowProcessor& p)
     auto later = [this] (std::function<void()> action) {
         // Diferimos los cambios que reconstruyen el rack para no destruir
         // la tarjeta que disparó el evento mientras todavía lo está procesando.
-        juce::Component::SafePointer<FlowEditor> safeThis (this);
+        juce::Component::SafePointer<FlowView> safeThis (this);
         juce::MessageManager::callAsync ([safeThis, action] {
             if (safeThis != nullptr)
             {
@@ -118,28 +119,38 @@ FlowEditor::FlowEditor (FlowProcessor& p)
     };
     addAndMakeVisible (moduleControls);
 
-    setResizable (true, true);
-    setResizeLimits (920, 700, 1800, 1300);
+    // Dry/Wet general
+    dryWetSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    dryWetSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 62, 22);
+    dryWetSlider.setTextValueSuffix ("%");
+    dryWetSlider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    dryWetSlider.setTooltip ("Blend between the original signal and the whole rack");
+    dryWetAttachment = std::make_unique<juce::SliderParameterAttachment> (processor.getDryWetParameter(), dryWetSlider);
+    dryWetSlider.textFromValueFunction = [] (double value) { return juce::String (juce::roundToInt (value)); };
+    dryWetSlider.updateText();
+    dryWetSlider.setDoubleClickReturnValue (true, 100.0);
+    addAndMakeVisible (dryWetSlider);
+
     setSize (1100, 820);
 
     rebuildRack();
     startTimerHz (30);
 }
 
-FlowEditor::~FlowEditor()
+FlowView::~FlowView()
 {
     stopTimer();
     setLookAndFeel (nullptr);
 }
 
 //==============================================================================
-std::shared_ptr<flow::Module> FlowEditor::getSelectedModule() const
+std::shared_ptr<flow::Module> FlowView::getSelectedModule() const
 {
     const auto index = processor.getSelectedModule();
     return juce::isPositiveAndBelow (index, (int) rack.size()) ? rack[(size_t) index] : nullptr;
 }
 
-void FlowEditor::rebuildRack()
+void FlowView::rebuildRack()
 {
     rack = processor.getRack();
     shownRackVersion = processor.getRackVersion();
@@ -155,7 +166,7 @@ void FlowEditor::rebuildRack()
     showSelectedModule();
 }
 
-void FlowEditor::selectModule (int index)
+void FlowView::selectModule (int index)
 {
     if (index == processor.getSelectedModule())
         return;
@@ -164,7 +175,7 @@ void FlowEditor::selectModule (int index)
     showSelectedModule();
 }
 
-void FlowEditor::showSelectedModule()
+void FlowView::showSelectedModule()
 {
     shownSelected = processor.getSelectedModule();
     rackPanel.setSelectedIndex (shownSelected);
@@ -185,7 +196,7 @@ void FlowEditor::showSelectedModule()
 }
 
 //==============================================================================
-void FlowEditor::refreshRackPresetList()
+void FlowView::refreshRackPresetList()
 {
     auto& combo = rackPresetSelector.getComboBox();
     combo.clear (juce::dontSendNotification);
@@ -209,7 +220,7 @@ void FlowEditor::refreshRackPresetList()
     rackPresetSelector.showName (processor.getRackPresetName());
 }
 
-void FlowEditor::loadRackPreset (int itemId)
+void FlowView::loadRackPreset (int itemId)
 {
     if (itemId >= userPresetIdOffset)
     {
@@ -222,7 +233,7 @@ void FlowEditor::loadRackPreset (int itemId)
     rebuildRack();
 }
 
-void FlowEditor::loadRackPresetFile (const juce::File& file)
+void FlowView::loadRackPresetFile (const juce::File& file)
 {
     if (auto xml = juce::XmlDocument::parse (file))
     {
@@ -232,7 +243,7 @@ void FlowEditor::loadRackPresetFile (const juce::File& file)
     }
 }
 
-void FlowEditor::saveRackPreset()
+void FlowView::saveRackPreset()
 {
     // Pide un nombre y guarda el rack en Documentos/Flow/Presets.
     saveDialog = std::make_unique<juce::AlertWindow> ("Save preset", "Name of the preset:", juce::MessageBoxIconType::NoIcon, this);
@@ -243,7 +254,7 @@ void FlowEditor::saveRackPreset()
     saveDialog->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
     saveDialog->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
 
-    juce::Component::SafePointer<FlowEditor> safeThis (this);
+    juce::Component::SafePointer<FlowView> safeThis (this);
     saveDialog->enterModalState (true, juce::ModalCallbackFunction::create ([safeThis] (int result) {
         if (safeThis == nullptr || safeThis->saveDialog == nullptr)
             return;
@@ -265,7 +276,7 @@ void FlowEditor::saveRackPreset()
     }));
 }
 
-void FlowEditor::showMenu()
+void FlowView::showMenu()
 {
     juce::PopupMenu menu;
     menu.setLookAndFeel (&lookAndFeel);
@@ -277,7 +288,7 @@ void FlowEditor::showMenu()
     menu.addItem (5, "Clear pattern of selected module", getSelectedModule() != nullptr);
     menu.addItem (6, "Reset rack (Init)");
 
-    juce::Component::SafePointer<FlowEditor> safeThis (this);
+    juce::Component::SafePointer<FlowView> safeThis (this);
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&menuButton), [safeThis] (int result) {
         if (safeThis == nullptr)
             return;
@@ -301,7 +312,7 @@ void FlowEditor::showMenu()
     });
 }
 
-void FlowEditor::exportPresetFile()
+void FlowView::exportPresetFile()
 {
     fileChooser = std::make_unique<juce::FileChooser> (
         "Export Flow preset",
@@ -309,7 +320,7 @@ void FlowEditor::exportPresetFile()
             .getChildFile (processor.getRackPresetName() + flow::presetFileExtension),
         juce::String ("*") + flow::presetFileExtension);
 
-    juce::Component::SafePointer<FlowEditor> safeThis (this);
+    juce::Component::SafePointer<FlowView> safeThis (this);
     fileChooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
                                   | juce::FileBrowserComponent::warnAboutOverwriting,
                               [safeThis] (const juce::FileChooser& chooser) {
@@ -323,14 +334,14 @@ void FlowEditor::exportPresetFile()
                               });
 }
 
-void FlowEditor::importPresetFile()
+void FlowView::importPresetFile()
 {
     fileChooser = std::make_unique<juce::FileChooser> (
         "Import Flow preset",
         juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
         juce::String ("*") + flow::presetFileExtension);
 
-    juce::Component::SafePointer<FlowEditor> safeThis (this);
+    juce::Component::SafePointer<FlowView> safeThis (this);
     fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                               [safeThis] (const juce::FileChooser& chooser) {
                                   const auto file = chooser.getResult();
@@ -341,7 +352,7 @@ void FlowEditor::importPresetFile()
 }
 
 //==============================================================================
-void FlowEditor::timerCallback()
+void FlowView::timerCallback()
 {
     processor.collectGarbage();
 
@@ -371,7 +382,7 @@ void FlowEditor::timerCallback()
 }
 
 //==============================================================================
-void FlowEditor::paint (juce::Graphics& g)
+void FlowView::paint (juce::Graphics& g)
 {
     g.fillAll (colours::background.darker (0.25f));
 
@@ -401,6 +412,13 @@ void FlowEditor::paint (juce::Graphics& g)
     g.setColour (colours::outline.withAlpha (0.7f));
     g.drawHorizontalLine (headerHeight - 6, frame.getX(), frame.getRight());
 
+    // Dry/Wet general
+    g.setColour (colours::panel);
+    g.fillRoundedRectangle (masterArea.toFloat(), 8.0f);
+    g.setColour (colours::text.withAlpha (0.85f));
+    g.setFont (flow::ui::spacedFont (14.0f, true, 0.2f));
+    g.drawText ("DRY/WET", masterArea.reduced (18, 0).withWidth (90), juce::Justification::centredLeft);
+
     // Panel derecho y etiquetas de la barra
     const auto rightPanel = rightPanelBounds.toFloat();
     g.setColour (colours::panel);
@@ -427,7 +445,7 @@ void FlowEditor::paint (juce::Graphics& g)
     }
 }
 
-void FlowEditor::resized()
+void FlowView::resized()
 {
     auto bounds = getLocalBounds().reduced (margin);
 
@@ -445,8 +463,12 @@ void FlowEditor::resized()
     bounds.removeFromTop (margin);
 
     // Columna izquierda: rack
-    const auto rackWidth = juce::jlimit (300, 520, (int) ((float) bounds.getWidth() * 0.34f));
-    rackViewport.setBounds (bounds.removeFromLeft (rackWidth));
+    const auto rackWidth = juce::jlimit (270, 470, (int) ((float) bounds.getWidth() * 0.306f));
+    auto rackColumn = bounds.removeFromLeft (rackWidth);
+    masterArea = rackColumn.removeFromBottom (masterHeight);
+    rackColumn.removeFromBottom (12);
+    rackViewport.setBounds (rackColumn);
+    dryWetSlider.setBounds (masterArea.reduced (16, 0).withTrimmedLeft (90).withSizeKeepingCentre (masterArea.getWidth() - 32 - 90, 32));
     rackPanel.layoutForWidth (rackViewport.getMaximumVisibleWidth());
     bounds.removeFromLeft (margin);
     rightPanelBounds = bounds.withTrimmedTop (-6);
@@ -466,4 +488,22 @@ void FlowEditor::resized()
     moduleControls.setBounds (bounds.removeFromBottom (controlsHeight).withTrimmedBottom (4));
     bounds.removeFromBottom (margin);
     envelopeEditor.setBounds (bounds);
+}
+
+//==============================================================================
+FlowEditor::FlowEditor (FlowProcessor& p)
+    : AudioProcessorEditor (p), view (p)
+{
+    addAndMakeVisible (view);
+    view.setTransform (juce::AffineTransform::scale (uiScale));
+
+    setResizable (true, true);
+    setResizeLimits (juce::roundToInt (920 * uiScale), juce::roundToInt (700 * uiScale),
+                     juce::roundToInt (1800 * uiScale), juce::roundToInt (1300 * uiScale));
+    setSize (juce::roundToInt (1100 * uiScale), juce::roundToInt (820 * uiScale));
+}
+
+void FlowEditor::resized()
+{
+    view.setBounds (0, 0, juce::roundToInt ((float) getWidth() / uiScale), juce::roundToInt ((float) getHeight() / uiScale));
 }

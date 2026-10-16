@@ -7,12 +7,13 @@
 #include "PresetSelector.h"
 #include "RackPanel.h"
 
-class FlowEditor final : public juce::AudioProcessorEditor,
-                         private juce::Timer
+// Toda la interfaz de Flow. El editor la muestra escalada (ver FlowEditor).
+class FlowView final : public juce::Component,
+                       private juce::Timer
 {
 public:
-    explicit FlowEditor (FlowProcessor&);
-    ~FlowEditor() override;
+    explicit FlowView (FlowProcessor&);
+    ~FlowView() override;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -47,6 +48,11 @@ private:
     juce::Viewport rackViewport;
     flow::ui::RackPanel rackPanel;
 
+    // Dry/Wet general (abajo del rack)
+    juce::Slider dryWetSlider;
+    std::unique_ptr<juce::SliderParameterAttachment> dryWetAttachment;
+    juce::Rectangle<int> masterArea;
+
     // Grilla
     juce::ComboBox gridBox, snapBox, curveBox;
     EnvelopeEditor envelopeEditor;
@@ -61,6 +67,23 @@ private:
     std::unique_ptr<juce::FileChooser> fileChooser;
     std::unique_ptr<juce::AlertWindow> saveDialog;
     juce::TooltipWindow tooltips { this, 600 };
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FlowView)
+};
+
+// Ventana del plugin: muestra FlowView al 90 % de su tamaño de diseño, así todo
+// (gráficos, textos y controles) queda proporcionalmente más chico.
+class FlowEditor final : public juce::AudioProcessorEditor
+{
+public:
+    static constexpr float uiScale = 0.9f;
+
+    explicit FlowEditor (FlowProcessor&);
+
+    void resized() override;
+
+private:
+    FlowView view;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FlowEditor)
 };
