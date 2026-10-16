@@ -31,7 +31,7 @@ jobs:
         working-directory: plugins/flow
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Instalar dependencias (Linux)
         if: runner.os == 'Linux'
@@ -51,7 +51,7 @@ jobs:
         run: ctest -C Release --output-on-failure
 
       - name: Subir plugin
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Flow-${{ matrix.name }}
           path: |
