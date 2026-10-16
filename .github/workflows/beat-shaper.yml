@@ -1,0 +1,60 @@
+name: Beat Shaper plugin
+
+on:
+  push:
+    paths:
+      - "plugins/beat-shaper/**"
+      - ".github/workflows/beat-shaper.yml"
+  pull_request:
+    paths:
+      - "plugins/beat-shaper/**"
+      - ".github/workflows/beat-shaper.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+          - name: macOS
+            os: macos-latest
+          - name: Linux
+            os: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: plugins/beat-shaper
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar dependencias (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev libxinerama-dev \
+            libxcursor-dev libxcomposite-dev libxext-dev libfreetype-dev libfontconfig1-dev
+
+      - name: Configurar
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Compilar
+        run: cmake --build build --config Release --parallel 4
+
+      - name: Tests
+        working-directory: plugins/beat-shaper/build
+        run: ctest -C Release --output-on-failure
+
+      - name: Subir plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: BeatShaper-${{ matrix.name }}
+          path: |
+            plugins/beat-shaper/build/BeatShaper_artefacts/Release/VST3
+            plugins/beat-shaper/build/BeatShaper_artefacts/Release/AU
+          if-no-files-found: error
