@@ -1,11 +1,13 @@
 #include "ModuleControls.h"
+#include "Presets.h"
 
 namespace flow::ui
 {
 
 namespace
 {
-    constexpr int titleHeight = 56;
+    constexpr int titleHeight = 64;
+    constexpr int nameWidth = 140;
 }
 
 ModuleControls::ModuleControls()
@@ -14,6 +16,36 @@ ModuleControls::ModuleControls()
     hint.setFont (juce::FontOptions (14.0f));
     hint.setJustificationType (juce::Justification::centredLeft);
     addChildComponent (hint);
+
+    presetSelector.onSelect = [this] (int itemId) {
+        if (module == nullptr)
+            return;
+
+        const auto& list = getModulePresets (module->getType());
+
+        if (juce::isPositiveAndBelow (itemId - 1, (int) list.size()))
+            applyPreset (list[(size_t) itemId - 1].name);
+    };
+    addChildComponent (presetSelector);
+}
+
+void ModuleControls::applyPreset (const juce::String& name)
+{
+    if (module == nullptr)
+        return;
+
+    module->applyPreset (name, getPatternBeats ? getPatternBeats() : 4);
+    refresh();
+    refreshPreset();
+
+    if (onPresetApplied)
+        onPresetApplied();
+}
+
+void ModuleControls::refreshPreset()
+{
+    if (module != nullptr)
+        presetSelector.showName (module->presetName);
 }
 
 void ModuleControls::setModule (std::shared_ptr<Module> moduleToShow)
@@ -26,6 +58,36 @@ void ModuleControls::setModule (std::shared_ptr<Module> moduleToShow)
 
     module = std::move (moduleToShow);
     controls.clear();
+    presetSelector.setVisible (module != nullptr);
+
+    auto& combo = presetSelector.getComboBox();
+    combo.clear (juce::dontSendNotification);
+
+    if (module != nullptr)
+    {
+        // "Init" arriba y un submenú por categoría: básicos primero, creativos después.
+        const auto& list = getModulePresets (module->getType());
+        auto* root = combo.getRootMenu();
+
+        for (size_t i = 0; i < list.size();)
+        {
+            const auto& category = list[i].category;
+
+            if (category == "Basic")
+            {
+                root->addItem ((int) i + 1, list[i].name);
+                ++i;
+                continue;
+            }
+
+            juce::PopupMenu sub;
+
+            for (; i < list.size() && list[i].category == category; ++i)
+                sub.addItem ((int) i + 1, list[i].name);
+
+            root->addSubMenu (category, sub);
+        }
+    }
 
     if (module != nullptr)
     {
@@ -59,6 +121,7 @@ void ModuleControls::setModule (std::shared_ptr<Module> moduleToShow)
     }
 
     refresh();
+    refreshPreset();
     resized();
     repaint();
 }
@@ -89,11 +152,14 @@ void ModuleControls::paint (juce::Graphics& g)
     g.setColour (colours::text);
     g.setFont (spacedFont (19.0f, true, 0.2f));
     g.drawText (module != nullptr ? juce::String (module->getName()).toUpperCase() : juce::String(),
-                title.withTrimmedLeft (24), juce::Justification::centredLeft);
+                title.withTrimmedLeft (24).withWidth (nameWidth), juce::Justification::centredLeft);
 
-    g.setColour (colours::textMuted);
-    g.setFont (spacedFont (12.0f, false, 0.3f));
-    g.drawText ("MODULE CONTROLS", title, juce::Justification::centredRight);
+    if (! labelArea.isEmpty())
+    {
+        g.setColour (colours::textMuted);
+        g.setFont (spacedFont (12.0f, false, 0.3f));
+        g.drawText ("MODULE CONTROLS", labelArea, juce::Justification::centredRight);
+    }
 
     g.setColour (colours::outline);
     g.drawHorizontalLine (titleHeight, 1.0f, (float) getWidth() - 1.0f);
@@ -109,6 +175,13 @@ void ModuleControls::paint (juce::Graphics& g)
 
 void ModuleControls::resized()
 {
+    // Encabezado: nombre | selector de presets | "MODULE CONTROLS"
+    auto title = getLocalBounds().removeFromTop (titleHeight).reduced (18, 0);
+    title.removeFromLeft (24 + nameWidth);
+    labelArea = title.getWidth() > 520 ? title.removeFromRight (170) : juce::Rectangle<int>();
+    const auto selectorWidth = juce::jmin (340, title.getWidth() - 10);
+    presetSelector.setBounds (title.removeFromLeft (selectorWidth).withSizeKeepingCentre (selectorWidth, 38));
+
     auto area = getLocalBounds().withTrimmedTop (titleHeight).reduced (26, 14);
     hint.setBounds (area);
 

@@ -4,6 +4,7 @@
 #include "FlowLookAndFeel.h"
 #include "ModuleControls.h"
 #include "PluginProcessor.h"
+#include "PresetSelector.h"
 #include "RackPanel.h"
 
 class FlowEditor final : public juce::AudioProcessorEditor,
@@ -24,18 +25,21 @@ private:
     void showSelectedModule();
     std::shared_ptr<flow::Module> getSelectedModule() const;
 
-    void applyPreset (int index);
-    void updatePresetBox();
+    // Presets generales (todo el rack)
+    void refreshRackPresetList();
+    void loadRackPreset (int itemId);
+    void loadRackPresetFile (const juce::File& file);
+    void saveRackPreset();
     void showMenu();
-    void savePresetFile();
-    void loadPresetFile();
+    void exportPresetFile();
+    void importPresetFile();
 
     FlowProcessor& processor;
     flow::ui::FlowLookAndFeel lookAndFeel;
 
     // Encabezado
-    juce::ComboBox presetBox;
-    flow::ui::IconButton previousPresetButton { flow::ui::IconButton::Icon::previous, "Previous preset" };
+    flow::ui::PresetSelector rackPresetSelector;
+    juce::Array<juce::File> userPresetFiles;
     flow::ui::IconButton saveButton { flow::ui::IconButton::Icon::save, "Save" };
     flow::ui::IconButton menuButton { flow::ui::IconButton::Icon::menu, "Menu" };
 
@@ -55,6 +59,7 @@ private:
     int shownEnvelopeVersion = -1;
 
     std::unique_ptr<juce::FileChooser> fileChooser;
+    std::unique_ptr<juce::AlertWindow> saveDialog;
     juce::TooltipWindow tooltips { this, 600 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FlowEditor)

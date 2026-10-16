@@ -38,16 +38,35 @@ Arriba de la grilla:
 
 ## Presets
 
-- El selector **Preset** aplica patrones de fábrica (Sidechain Pulse, Swells, Gates,
-  Trance Gate, fades, etc.) a la envolvente del **módulo seleccionado**. La flecha `<`
-  pasa al patrón anterior.
-- El ícono de **guardar** exporta el rack completo a un archivo `.flowpreset`.
-- El **menú** (☰) permite cargar un `.flowpreset`, limpiar el patrón del módulo
-  seleccionado o resetear el rack.
-- Todo el rack (módulos, orden, envolventes y ajustes) se guarda dentro del proyecto del DAW.
+Hay dos niveles:
 
-Cuando el DAW está detenido el patrón sigue corriendo con un reloj interno al tempo del
-proyecto, así podés escucharlo en vivo con una entrada de audio.
+**Presets generales** (arriba, en el encabezado): guardan el rack completo (módulos, orden,
+envolventes, parámetros y ajustes de la grilla).
+
+- `<` / `>` pasan al anterior / siguiente; el desplegable muestra *Factory* y *User*.
+- El ícono de **guardar** pide un nombre y lo guarda en `Documentos/Flow/Presets`.
+- El **menú** (☰) permite exportar / importar archivos `.flowpreset`, abrir la carpeta de
+  presets, limpiar el patrón del módulo seleccionado o volver al rack inicial.
+- Los de fábrica se agregan en `Source/RackPresets.h` (por ahora solo *Init*).
+
+**Presets de módulo** (en el panel *Module Controls*, al lado del nombre del módulo): cambian
+la envolvente del módulo seleccionado y, si el preset lo define, sus parámetros.
+
+- **Básicos**, iguales para todos los módulos:
+  - *Init* (plano).
+  - *Gate*: 1/1, 1/2, 1/4, 1/8, 1/16, 1/32, tresillos (1/2T, 1/4T, 1/8T, 1/16T) y con
+    puntillo (1/4D, 1/8D).
+  - *Sidechain*: 1/1, 1/2, 1/4, 1/8, 1/16, 1/4T, 1/8T, 1/4D, 1/8D.
+  - *Ramp Up* y *Ramp Down*: 1/1, 1/2, 1/4, 1/8, 1/16.
+- **Creativos**: Swells, Trance Gate, fades, etc. Los propios de cada módulo se agregan en
+  `presets::forType()` dentro de `Source/Presets.h`.
+
+Los básicos siguen la figura musical: si cambiás el **Grid**, se regeneran para que "Gate 1/8"
+siga siendo de corcheas.
+
+Todo se guarda dentro del proyecto del DAW. Cuando el DAW está en **pausa**, el patrón queda
+quieto en la posición del cursor; en la versión Standalone (sin transporte) corre solo al
+tempo interno.
 
 ## Estructura
 
@@ -55,11 +74,14 @@ proyecto, así podés escucharlo en vivo con una entrada de audio.
 Source/
   Envelope.h          Modelo de la envolvente (sin JUCE): nodos, curvas, evaluación.
   EnvelopeState.h     Envolvente compartida UI ↔ audio (tabla sin bloqueos).
-  Presets.h           Patrones de fábrica.
+  ModuleType.h        Tipos de módulo.
+  Presets.h           Presets de módulo (básicos y creativos).
+  RackPresets.h       Presets generales y carpeta de presets del usuario.
+  PresetSelector.*    Selector [<] [preset ▾] [>].
   Modules.*           Módulos del rack: base, Volume y Reverb.
   PluginProcessor.*   Rack, sincronía con el host, guardado del estado.
   FlowLookAndFeel.*   Colores, sliders, combos, íconos y logo.
-  RackPanel.*         Tarjetas de los módulos y botón "Add module".
+  RackPanel.*         Tarjetas de los módulos, botón "Add module" y panel para elegir módulo.
   EnvelopeEditor.*    Grilla con los nodos.
   ModuleControls.*    Panel "Module Controls".
   PluginEditor.*      Ventana principal.
@@ -80,8 +102,9 @@ Tests/
 1. Crear una clase que herede de `flow::Module` en `Modules.h/.cpp` e implementar
    `processEffect` (recibe el valor de la envolvente de cada muestra).
 2. Declarar sus parámetros en `getParameterSpecs()`; el panel Module Controls los muestra solo.
-3. Sumarlo a `ModuleType`, `createModule`, `moduleTypeToId`, `getAvailableModuleTypes` y
-   `getModuleTypeName`.
+3. Sumarlo a `ModuleType` (en `ModuleType.h`), `createModule`, `moduleTypeToId`,
+   `getAvailableModuleTypes`, `getModuleTypeName` y `getModuleTypeDescription`.
+4. Dibujar su ícono en `drawModuleIcon` (`FlowLookAndFeel.cpp`).
 
 ## Compilar
 

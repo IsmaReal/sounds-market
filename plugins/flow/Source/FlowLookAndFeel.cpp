@@ -20,6 +20,7 @@ FlowLookAndFeel::FlowLookAndFeel()
     setColour (juce::PopupMenu::textColourId, colours::text);
     setColour (juce::PopupMenu::highlightedBackgroundColourId, colours::accentDim);
     setColour (juce::PopupMenu::highlightedTextColourId, colours::text);
+    setColour (juce::PopupMenu::headerTextColourId, colours::accent);
     setColour (juce::ScrollBar::thumbColourId, colours::outline);
 }
 
@@ -97,6 +98,16 @@ void FlowLookAndFeel::drawPopupMenuBackground (juce::Graphics& g, int width, int
     g.fillAll (colours::panel);
     g.setColour (colours::outline);
     g.drawRect (0, 0, width, height);
+}
+
+void FlowLookAndFeel::drawCallOutBoxBackground (juce::CallOutBox&, juce::Graphics& g, const juce::Path& path, juce::Image&)
+{
+    g.setColour (juce::Colours::black.withAlpha (0.45f));
+    g.fillPath (path, juce::AffineTransform::translation (0.0f, 4.0f));
+    g.setColour (colours::panel);
+    g.fillPath (path);
+    g.setColour (colours::outline.brighter (0.15f));
+    g.strokePath (path, juce::PathStrokeType (1.0f));
 }
 
 //==============================================================================
@@ -195,6 +206,53 @@ void IconButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
             p.lineTo (r.getBottomLeft());
             g.setColour (colours::textMuted.withAlpha (highlighted ? 1.0f : 0.6f));
             g.strokePath (p, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            break;
+        }
+    }
+}
+
+//==============================================================================
+void drawModuleIcon (juce::Graphics& g, ModuleType type, juce::Rectangle<float> area, juce::Colour colour)
+{
+    g.setColour (colour);
+    const juce::PathStrokeType stroke (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
+    juce::Path p;
+
+    switch (type)
+    {
+        case ModuleType::volume:
+        {
+            // Dos "bombeos" de sidechain
+            const auto half = area.getWidth() * 0.5f;
+
+            for (int i = 0; i < 2; ++i)
+            {
+                const auto x = area.getX() + (float) i * half;
+                p.startNewSubPath (x, area.getY());
+                p.lineTo (x, area.getBottom());
+                p.quadraticTo (x + half * 0.15f, area.getY() + area.getHeight() * 0.1f, x + half, area.getY());
+            }
+
+            g.strokePath (p, stroke);
+            break;
+        }
+
+        case ModuleType::reverb:
+        {
+            // Punto con ondas que se expanden
+            const auto centre = juce::Point<float> (area.getX() + area.getWidth() * 0.2f, area.getCentreY());
+            g.fillEllipse (juce::Rectangle<float> (5.0f, 5.0f).withCentre (centre));
+
+            for (int i = 1; i <= 3; ++i)
+            {
+                const auto r = area.getWidth() * 0.27f * (float) i;
+                juce::Path arc;
+                arc.addCentredArc (centre.x, centre.y, r, r, 0.0f,
+                                   juce::degreesToRadians (45.0f), juce::degreesToRadians (135.0f), true);
+                g.setColour (colour.withAlpha (1.0f - 0.22f * (float) (i - 1)));
+                g.strokePath (arc, stroke);
+            }
+
             break;
         }
     }

@@ -52,7 +52,8 @@ set(FLOW_SOURCES
     Source/EnvelopeEditor.cpp
     Source/FlowLookAndFeel.cpp
     Source/RackPanel.cpp
-    Source/ModuleControls.cpp)
+    Source/ModuleControls.cpp
+    Source/PresetSelector.cpp)
 
 target_sources(Flow PRIVATE ${FLOW_SOURCES})
 

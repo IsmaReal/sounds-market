@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 #include "Presets.h"
+#include "RackPresets.h"
 
 namespace
 {
@@ -7,7 +8,8 @@ namespace
 
     constexpr int headerHeight = 100;
     constexpr int toolbarHeight = 70;
-    constexpr int controlsHeight = 178;
+    constexpr int controlsHeight = 186;
+    constexpr int userPresetIdOffset = 1000;
     constexpr int margin = 18;
 
     const juce::StringArray gridNames { "1 Beat", "2 Beats", "4 Beats", "8 Beats" };
@@ -36,31 +38,14 @@ FlowEditor::FlowEditor (FlowProcessor& p)
 {
     setLookAndFeel (&lookAndFeel);
 
-    // Encabezado
-    const auto& presets = flow::getFactoryPresets();
+    // Encabezado: presets generales (todo el rack)
+    rackPresetSelector.getComboBox().onBeforePopup = [this] { refreshRackPresetList(); };
+    rackPresetSelector.onSelect = [this] (int itemId) { loadRackPreset (itemId); };
+    addAndMakeVisible (rackPresetSelector);
+    refreshRackPresetList();
 
-    for (int i = 0; i < (int) presets.size(); ++i)
-        presetBox.addItem (presets[(size_t) i].name, i + 1);
-
-    presetBox.setTextWhenNothingSelected ("Custom");
-    presetBox.onChange = [this] {
-        if (presetBox.getSelectedId() > 0)
-            applyPreset (presetBox.getSelectedId() - 1);
-    };
-    presetBox.setColour (juce::ComboBox::outlineColourId, juce::Colours::transparentBlack);
-    presetBox.setColour (juce::ComboBox::backgroundColourId, juce::Colours::transparentBlack);
-    addAndMakeVisible (presetBox);
-
-    previousPresetButton.setTooltip ("Previous pattern");
-    previousPresetButton.onClick = [this] {
-        const auto count = (int) flow::getFactoryPresets().size();
-        const auto current = presetBox.getSelectedId() - 1;
-        applyPreset (current <= 0 ? count - 1 : current - 1);
-    };
-    addAndMakeVisible (previousPresetButton);
-
-    saveButton.setTooltip ("Save preset file");
-    saveButton.onClick = [this] { savePresetFile(); };
+    saveButton.setTooltip ("Save preset");
+    saveButton.onClick = [this] { saveRackPreset(); };
     addAndMakeVisible (saveButton);
 
     menuButton.setTooltip ("Menu");
@@ -97,7 +82,7 @@ FlowEditor::FlowEditor (FlowProcessor& p)
     fillCombo (curveBox, curveNames);
 
     gridBox.onChange = [this] {
-        processor.setPatternBeats (FlowProcessor::gridOptions[juce::jmax (0, gridBox.getSelectedItemIndex())]);
+        processor.changePatternBeats (FlowProcessor::gridOptions[juce::jmax (0, gridBox.getSelectedItemIndex())]);
         envelopeEditor.setGrid (processor.getPatternBeats(), processor.getSnapPerBeat());
     };
     snapBox.onChange = [this] {
@@ -118,10 +103,19 @@ FlowEditor::FlowEditor (FlowProcessor& p)
             module->envelope.setNodes (nodes);
             module->presetName = {};
             shownEnvelopeVersion = module->envelope.getVersion();
-            updatePresetBox();
+            moduleControls.refreshPreset();
         }
     };
     addAndMakeVisible (envelopeEditor);
+
+    moduleControls.getPatternBeats = [this] { return processor.getPatternBeats(); };
+    moduleControls.onPresetApplied = [this] {
+        if (const auto module = getSelectedModule())
+        {
+            envelopeEditor.setNodes (module->envelope.getNodes());
+            shownEnvelopeVersion = module->envelope.getVersion();
+        }
+    };
     addAndMakeVisible (moduleControls);
 
     setResizable (true, true);
@@ -186,51 +180,102 @@ void FlowEditor::showSelectedModule()
         shownEnvelopeVersion = module->envelope.getVersion();
     }
 
-    updatePresetBox();
+    rackPresetSelector.showName (processor.getRackPresetName());
     repaint();
 }
 
 //==============================================================================
-void FlowEditor::applyPreset (int index)
+void FlowEditor::refreshRackPresetList()
 {
-    const auto& presets = flow::getFactoryPresets();
-    const auto module = getSelectedModule();
+    auto& combo = rackPresetSelector.getComboBox();
+    combo.clear (juce::dontSendNotification);
 
-    if (module == nullptr || ! juce::isPositiveAndBelow (index, (int) presets.size()))
-        return;
+    combo.addSectionHeading ("Factory");
+    const auto& factory = flow::getFactoryRackPresets();
 
-    module->envelope.setNodes (presets[(size_t) index].nodes);
-    module->presetName = presets[(size_t) index].name;
-    envelopeEditor.setNodes (module->envelope.getNodes());
-    shownEnvelopeVersion = module->envelope.getVersion();
-    updatePresetBox();
+    for (int i = 0; i < (int) factory.size(); ++i)
+        combo.addItem (factory[(size_t) i].name, i + 1);
+
+    userPresetFiles = flow::getUserRackPresets();
+
+    if (! userPresetFiles.isEmpty())
+    {
+        combo.addSectionHeading ("User");
+
+        for (int i = 0; i < userPresetFiles.size(); ++i)
+            combo.addItem (userPresetFiles[i].getFileNameWithoutExtension(), userPresetIdOffset + i);
+    }
+
+    rackPresetSelector.showName (processor.getRackPresetName());
 }
 
-void FlowEditor::updatePresetBox()
+void FlowEditor::loadRackPreset (int itemId)
 {
-    const auto module = getSelectedModule();
-    const auto& presets = flow::getFactoryPresets();
-    auto id = 0;
+    if (itemId >= userPresetIdOffset)
+    {
+        if (juce::isPositiveAndBelow (itemId - userPresetIdOffset, userPresetFiles.size()))
+            loadRackPresetFile (userPresetFiles[itemId - userPresetIdOffset]);
+        return;
+    }
 
-    if (module != nullptr)
-        for (int i = 0; i < (int) presets.size(); ++i)
-            if (module->presetName == juce::String (presets[(size_t) i].name))
-                id = i + 1;
+    processor.loadFactoryRackPreset (itemId - 1);
+    rebuildRack();
+}
 
-    presetBox.setSelectedId (id, juce::dontSendNotification);
-    presetBox.setEnabled (module != nullptr);
-    previousPresetButton.setEnabled (module != nullptr);
+void FlowEditor::loadRackPresetFile (const juce::File& file)
+{
+    if (auto xml = juce::XmlDocument::parse (file))
+    {
+        processor.restoreStateTree (juce::ValueTree::fromXml (*xml));
+        processor.setRackPresetName (file.getFileNameWithoutExtension());
+        rebuildRack();
+    }
+}
+
+void FlowEditor::saveRackPreset()
+{
+    // Pide un nombre y guarda el rack en Documentos/Flow/Presets.
+    saveDialog = std::make_unique<juce::AlertWindow> ("Save preset", "Name of the preset:", juce::MessageBoxIconType::NoIcon, this);
+    saveDialog->setLookAndFeel (&lookAndFeel);
+
+    const auto current = processor.getRackPresetName();
+    saveDialog->addTextEditor ("name", current == "Init" ? juce::String ("My preset") : current);
+    saveDialog->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    saveDialog->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    juce::Component::SafePointer<FlowEditor> safeThis (this);
+    saveDialog->enterModalState (true, juce::ModalCallbackFunction::create ([safeThis] (int result) {
+        if (safeThis == nullptr || safeThis->saveDialog == nullptr)
+            return;
+
+        const auto name = juce::File::createLegalFileName (safeThis->saveDialog->getTextEditorContents ("name").trim());
+        safeThis->saveDialog.reset();
+
+        if (result != 1 || name.isEmpty())
+            return;
+
+        const auto folder = flow::getUserPresetFolder();
+        folder.createDirectory();
+        safeThis->processor.setRackPresetName (name);
+
+        if (auto xml = safeThis->processor.createStateTree().createXml())
+            xml->writeTo (folder.getChildFile (name + flow::presetFileExtension));
+
+        safeThis->refreshRackPresetList();
+    }));
 }
 
 void FlowEditor::showMenu()
 {
     juce::PopupMenu menu;
     menu.setLookAndFeel (&lookAndFeel);
-    menu.addItem (1, "Load preset file...");
-    menu.addItem (2, "Save preset file...");
+    menu.addItem (1, "Save preset");
+    menu.addItem (2, "Export preset to file...");
+    menu.addItem (3, "Import preset from file...");
+    menu.addItem (4, "Open presets folder");
     menu.addSeparator();
-    menu.addItem (3, "Clear pattern of selected module", getSelectedModule() != nullptr);
-    menu.addItem (4, "Reset rack");
+    menu.addItem (5, "Clear pattern of selected module", getSelectedModule() != nullptr);
+    menu.addItem (6, "Reset rack (Init)");
 
     juce::Component::SafePointer<FlowEditor> safeThis (this);
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&menuButton), [safeThis] (int result) {
@@ -239,21 +284,30 @@ void FlowEditor::showMenu()
 
         switch (result)
         {
-            case 1: safeThis->loadPresetFile(); break;
-            case 2: safeThis->savePresetFile(); break;
-            case 3: safeThis->applyPreset (0); break;
-            case 4: safeThis->processor.resetRack(); safeThis->rebuildRack(); break;
+            case 1: safeThis->saveRackPreset(); break;
+            case 2: safeThis->exportPresetFile(); break;
+            case 3: safeThis->importPresetFile(); break;
+            case 4:
+            {
+                const auto folder = flow::getUserPresetFolder();
+                folder.createDirectory();
+                folder.startAsProcess();
+                break;
+            }
+            case 5: safeThis->moduleControls.applyPreset ("Init"); break;
+            case 6: safeThis->processor.loadFactoryRackPreset (0); safeThis->rebuildRack(); break;
             default: break;
         }
     });
 }
 
-void FlowEditor::savePresetFile()
+void FlowEditor::exportPresetFile()
 {
     fileChooser = std::make_unique<juce::FileChooser> (
-        "Save Flow preset",
-        juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Flow preset.flowpreset"),
-        "*.flowpreset");
+        "Export Flow preset",
+        juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
+            .getChildFile (processor.getRackPresetName() + flow::presetFileExtension),
+        juce::String ("*") + flow::presetFileExtension);
 
     juce::Component::SafePointer<FlowEditor> safeThis (this);
     fileChooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
@@ -265,30 +319,24 @@ void FlowEditor::savePresetFile()
                                       return;
 
                                   if (auto xml = safeThis->processor.createStateTree().createXml())
-                                      xml->writeTo (file.withFileExtension ("flowpreset"));
+                                      xml->writeTo (file.withFileExtension (flow::presetFileExtension));
                               });
 }
 
-void FlowEditor::loadPresetFile()
+void FlowEditor::importPresetFile()
 {
     fileChooser = std::make_unique<juce::FileChooser> (
-        "Load Flow preset",
+        "Import Flow preset",
         juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
-        "*.flowpreset");
+        juce::String ("*") + flow::presetFileExtension);
 
     juce::Component::SafePointer<FlowEditor> safeThis (this);
     fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                               [safeThis] (const juce::FileChooser& chooser) {
                                   const auto file = chooser.getResult();
 
-                                  if (safeThis == nullptr || ! file.existsAsFile())
-                                      return;
-
-                                  if (auto xml = juce::XmlDocument::parse (file))
-                                  {
-                                      safeThis->processor.restoreStateTree (juce::ValueTree::fromXml (*xml));
-                                      safeThis->rebuildRack();
-                                  }
+                                  if (safeThis != nullptr && file.existsAsFile())
+                                      safeThis->loadRackPresetFile (file);
                               });
 }
 
@@ -316,7 +364,7 @@ void FlowEditor::timerCallback()
         }
 
         envelopeEditor.setPlayhead (processor.getDisplayPhase(), module->getCurrentEnvelopeValue(),
-                                    module->enabled.load());
+                                    module->enabled.load(), processor.isClockRunning());
     }
 
     moduleControls.refresh();
@@ -340,7 +388,7 @@ void FlowEditor::paint (juce::Graphics& g)
     flow::ui::drawLogo (g, header.removeFromLeft (460).toFloat().withSizeKeepingCentre (460.0f, 42.0f));
 
     g.setColour (colours::outline);
-    const auto dividerX = (float) previousPresetButton.getX() - 130.0f;
+    const auto dividerX = (float) rackPresetSelector.getX() - 130.0f;
     g.drawLine (dividerX, 28.0f, dividerX, (float) headerHeight - 28.0f, 1.0f);
     const auto secondDivider = (float) menuButton.getX() - 26.0f;
     g.drawLine (secondDivider, 28.0f, secondDivider, (float) headerHeight - 28.0f, 1.0f);
@@ -349,14 +397,6 @@ void FlowEditor::paint (juce::Graphics& g)
     g.setFont (juce::FontOptions (19.0f));
     g.drawText ("Preset", juce::Rectangle<float> (dividerX + 30.0f, 0.0f, 100.0f, (float) headerHeight),
                 juce::Justification::centredLeft);
-
-    // Caja del preset (flecha + combo)
-    const auto presetArea = previousPresetButton.getBounds().getUnion (presetBox.getBounds()).toFloat();
-    g.setColour (colours::field);
-    g.fillRoundedRectangle (presetArea, 5.0f);
-    g.setColour (colours::outline);
-    g.drawRoundedRectangle (presetArea.reduced (0.5f), 5.0f, 1.0f);
-    g.drawVerticalLine (previousPresetButton.getRight(), presetArea.getY() + 1.0f, presetArea.getBottom() - 1.0f);
 
     g.setColour (colours::outline.withAlpha (0.7f));
     g.drawHorizontalLine (headerHeight - 6, frame.getX(), frame.getRight());
@@ -400,9 +440,7 @@ void FlowEditor::resized()
     header.removeFromLeft (460);
 
     const auto presetWidth = juce::jlimit (260, 620, header.getWidth() - 150);
-    auto presetArea = header.removeFromRight (presetWidth).withSizeKeepingCentre (presetWidth, 50);
-    previousPresetButton.setBounds (presetArea.removeFromLeft (52));
-    presetBox.setBounds (presetArea.withTrimmedLeft (10));
+    rackPresetSelector.setBounds (header.removeFromRight (presetWidth).withSizeKeepingCentre (presetWidth, 50));
 
     bounds.removeFromTop (margin);
 

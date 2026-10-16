@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ModuleType.h"
+
 #include <juce_gui_basics/juce_gui_basics.h>
 
 // Estética de Flow: fondo grafito, paneles redondeados y acento verde.
@@ -49,6 +51,10 @@ public:
     juce::Font getPopupMenuFont() override;
 
     void drawPopupMenuBackground (juce::Graphics&, int width, int height) override;
+
+    void drawCallOutBoxBackground (juce::CallOutBox&, juce::Graphics&, const juce::Path&, juce::Image&) override;
+    int getCallOutBoxBorderSize (const juce::CallOutBox&) override { return 22; }
+    float getCallOutBoxCornerSize (const juce::CallOutBox&) override { return 10.0f; }
 };
 
 // Botón con ícono dibujado (encendido, guardar, menú, flechas).
@@ -67,6 +73,9 @@ private:
     Icon icon;
     bool active = true;
 };
+
+// Ícono de cada tipo de módulo.
+void drawModuleIcon (juce::Graphics&, ModuleType type, juce::Rectangle<float> area, juce::Colour colour);
 
 // Logo "FLOW" con la onda y el subtítulo.
 void drawLogo (juce::Graphics&, juce::Rectangle<float> area);

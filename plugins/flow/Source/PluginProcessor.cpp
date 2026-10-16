@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "RackPresets.h"
 
 namespace
 {
@@ -19,6 +20,7 @@ namespace
     const juce::Identifier selectedId { "selected" };
     const juce::Identifier versionId { "version" };
     const juce::Identifier presetId { "preset" };
+    const juce::Identifier rackPresetId { "rackPreset" };
 
     juce::ValueTree nodesToTree (const std::vector<beatshaper::Node>& nodes)
     {
@@ -115,8 +117,10 @@ void FlowProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
     if (numSamples == 0 || phaseBuffer.empty())
         return;
 
-    // Posición en beats: seguimos al host cuando reproduce; si está detenido,
-    // corremos con un reloj interno al tempo del proyecto.
+    // Posición en beats: seguimos al host. Si el DAW está en pausa el patrón queda
+    // quieto en la posición del cursor; solo corre con reloj propio cuando no hay
+    // transporte (por ejemplo, en la versión Standalone).
+    bool hasTransport = false;
     bool playing = false;
     double beatPosition = internalBeatPosition;
 
@@ -124,23 +128,21 @@ void FlowProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
     {
         if (auto position = hostPlayHead->getPosition())
         {
+            hasTransport = true;
+            playing = position->getIsPlaying();
+
             if (auto bpm = position->getBpm())
                 lastBpm = juce::jlimit (20.0, 999.0, *bpm);
 
-            if (position->getIsPlaying())
-            {
-                if (auto ppq = position->getPpqPosition())
-                {
-                    playing = true;
-                    beatPosition = *ppq;
-                }
-            }
+            if (auto ppq = position->getPpqPosition())
+                beatPosition = *ppq;
         }
     }
 
-    hostPlaying.store (playing);
+    const auto running = playing || ! hasTransport;
+    clockRunning.store (running);
 
-    const auto beatsPerSample = lastBpm / (60.0 * currentSampleRate);
+    const auto beatsPerSample = running ? lastBpm / (60.0 * currentSampleRate) : 0.0;
     const auto beats = (double) patternBeats.load();
     const auto smoothingMs = curveOptionsMs[juce::jlimit (0, 2, curveMode.load())];
     const auto smoothing = (float) std::exp (-1.0 / (smoothingMs * 0.001 * currentSampleRate));
@@ -181,7 +183,10 @@ FlowProcessor::ModulePtr FlowProcessor::createPreparedModule (flow::ModuleType t
     auto module = flow::createModule (type);
 
     if (module != nullptr)
+    {
+        module->updatePatternForGrid (getPatternBeats());
         module->prepare (currentSampleRate, maxBlockSize, getTotalNumOutputChannels());
+    }
 
     return module;
 }
@@ -283,6 +288,7 @@ void FlowProcessor::moveModule (int fromIndex, int toIndex)
 void FlowProcessor::resetRack()
 {
     const juce::ScopedLock lock (rackLock);
+    rackPresetName = "Init";
     rack.clear();
     rack.push_back (createPreparedModule (flow::ModuleType::volume));
     selectedModule.store (0);
@@ -306,6 +312,7 @@ juce::ValueTree FlowProcessor::createStateTree() const
     state.setProperty (snapId, snapPerBeat.load(), nullptr);
     state.setProperty (curveModeId, curveMode.load(), nullptr);
     state.setProperty (selectedId, selectedModule.load(), nullptr);
+    state.setProperty (rackPresetId, getRackPresetName(), nullptr);
 
     for (const auto& module : getRack())
     {
@@ -368,9 +375,49 @@ void FlowProcessor::restoreStateTree (const juce::ValueTree& state)
     setCurveMode ((int) state.getProperty (curveModeId, 1));
 
     const juce::ScopedLock lock (rackLock);
+    rackPresetName = state.getProperty (rackPresetId, "Init").toString();
     rack = std::move (newRack);
     selectedModule.store (juce::jlimit (0, (int) rack.size() - 1, (int) state.getProperty (selectedId, 0)));
     publishRack();
+}
+
+void FlowProcessor::loadFactoryRackPreset (int index)
+{
+    const auto& presets = flow::getFactoryRackPresets();
+
+    if (! juce::isPositiveAndBelow (index, (int) presets.size()))
+        return;
+
+    const auto& preset = presets[(size_t) index];
+
+    if (preset.xml.isEmpty())
+        resetRack();
+    else if (auto xml = juce::parseXML (preset.xml))
+        restoreStateTree (juce::ValueTree::fromXml (*xml));
+
+    setRackPresetName (preset.name);
+}
+
+juce::String FlowProcessor::getRackPresetName() const
+{
+    const juce::ScopedLock lock (rackLock);
+    return rackPresetName;
+}
+
+void FlowProcessor::setRackPresetName (const juce::String& name)
+{
+    const juce::ScopedLock lock (rackLock);
+    rackPresetName = name;
+}
+
+void FlowProcessor::changePatternBeats (int beats)
+{
+    setPatternBeats (beats);
+
+    const juce::ScopedLock lock (rackLock);
+
+    for (auto& module : rack)
+        module->updatePatternForGrid (getPatternBeats());
 }
 
 void FlowProcessor::getStateInformation (juce::MemoryBlock& destData)

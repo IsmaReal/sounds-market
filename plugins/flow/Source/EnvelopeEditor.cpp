@@ -44,15 +44,16 @@ void EnvelopeEditor::setGrid (int beats, int snapPerBeat)
     repaint();
 }
 
-void EnvelopeEditor::setPlayhead (float phase, float gain, bool visible)
+void EnvelopeEditor::setPlayhead (float phase, float gain, bool visible, bool running)
 {
     if (juce::approximatelyEqual (phase, playheadPhase) && juce::approximatelyEqual (gain, playheadGain)
-        && visible == playheadVisible)
+        && visible == playheadVisible && running == playheadRunning)
         return;
 
     playheadPhase = phase;
     playheadGain = gain;
     playheadVisible = visible;
+    playheadRunning = running;
     repaint (getGridArea().toNearestInt().expanded (8));
 }
 
@@ -468,9 +469,10 @@ void EnvelopeEditor::drawEnvelope (juce::Graphics& g, juce::Rectangle<float> are
     if (playheadVisible)
     {
         const auto p = toScreen (playheadPhase, playheadGain);
-        g.setColour (colours::playhead.withAlpha (0.35f));
+        const auto alpha = playheadRunning ? 1.0f : 0.35f;
+        g.setColour (colours::playhead.withAlpha (0.35f * alpha));
         g.drawLine (p.x, area.getY(), p.x, area.getBottom(), 1.5f);
-        g.setColour (colours::playhead);
+        g.setColour (colours::playhead.withAlpha (alpha));
         g.fillEllipse (p.x - 3.5f, p.y - 3.5f, 7.0f, 7.0f);
     }
 }

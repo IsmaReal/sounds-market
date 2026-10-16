@@ -1,6 +1,7 @@
 #pragma once
 
 #include "EnvelopeState.h"
+#include "ModuleType.h"
 
 #include <juce_audio_basics/juce_audio_basics.h>
 
@@ -8,12 +9,6 @@
 
 namespace flow
 {
-
-enum class ModuleType
-{
-    volume,
-    reverb
-};
 
 // Parámetro propio de un módulo (se muestra en "Module Controls").
 struct ModuleParameterSpec
@@ -36,7 +31,7 @@ public:
     virtual ModuleType getType() const noexcept = 0;
     virtual const char* getName() const noexcept = 0;
     virtual std::vector<ModuleParameterSpec> getParameterSpecs() const = 0;
-    virtual std::vector<beatshaper::Node> getDefaultPattern() const = 0;
+    virtual const char* getDefaultPresetName() const noexcept = 0;
 
     // Se llama en el hilo de mensajes (o en prepareToPlay), nunca en paralelo con process().
     void prepare (double sampleRate, int maxBlockSize, int numChannels);
@@ -48,8 +43,15 @@ public:
     std::atomic<float> mix { 1.0f };
     EnvelopeState envelope;
 
-    // Nombre del patrón de fábrica cargado (vacío si se editó a mano). Solo hilo de mensajes.
+    // Nombre del preset de módulo cargado (vacío si se editó a mano). Solo hilo de mensajes.
     juce::String presetName;
+
+    // Aplica un preset de módulo (patrón + parámetros). Solo hilo de mensajes.
+    bool applyPreset (const juce::String& name, int patternBeats);
+
+    // Si el preset cargado sigue la grilla (Gate 1/8, etc.), regenera el patrón para
+    // el nuevo largo sin tocar los parámetros. Solo hilo de mensajes.
+    void updatePatternForGrid (int patternBeats);
 
     float getParameter (int index) const noexcept { return parameters[(size_t) index].load(); }
     void setParameter (int index, float value) noexcept { parameters[(size_t) index].store (juce::jlimit (0.0f, 1.0f, value)); }
@@ -58,7 +60,7 @@ public:
     float getCurrentEnvelopeValue() const noexcept { return currentEnvelopeValue.load(); }
 
 protected:
-    void initialiseParameters();
+    void initialise(); // parámetros por defecto y preset inicial
 
     virtual void prepareEffect (double sampleRate, int maxBlockSize, int numChannels) = 0;
     virtual void processEffect (juce::AudioBuffer<float>& buffer, const float* envelopeValues, int numSamples) noexcept = 0;
@@ -81,8 +83,8 @@ public:
 
     ModuleType getType() const noexcept override { return ModuleType::volume; }
     const char* getName() const noexcept override { return "Volume"; }
+    const char* getDefaultPresetName() const noexcept override { return "Sidechain 1/4"; }
     std::vector<ModuleParameterSpec> getParameterSpecs() const override { return {}; }
-    std::vector<beatshaper::Node> getDefaultPattern() const override;
 
 private:
     void prepareEffect (double, int, int) override {}
@@ -100,8 +102,8 @@ public:
 
     ModuleType getType() const noexcept override { return ModuleType::reverb; }
     const char* getName() const noexcept override { return "Reverb"; }
+    const char* getDefaultPresetName() const noexcept override { return "Swells"; }
     std::vector<ModuleParameterSpec> getParameterSpecs() const override;
-    std::vector<beatshaper::Node> getDefaultPattern() const override;
 
 private:
     void prepareEffect (double sampleRate, int maxBlockSize, int numChannels) override;
@@ -121,5 +123,6 @@ const char* moduleTypeToId (ModuleType type) noexcept;
 bool moduleTypeFromId (const juce::String& id, ModuleType& type) noexcept;
 std::vector<ModuleType> getAvailableModuleTypes();
 const char* getModuleTypeName (ModuleType type) noexcept;
+const char* getModuleTypeDescription (ModuleType type) noexcept;
 
 } // namespace flow

@@ -5,12 +5,45 @@ namespace flow
 {
 
 //==============================================================================
-void Module::initialiseParameters()
+void Module::initialise()
 {
     const auto specs = getParameterSpecs();
 
     for (size_t i = 0; i < specs.size() && i < (size_t) maxParameters; ++i)
         parameters[i].store (specs[i].defaultValue);
+
+    applyPreset (getDefaultPresetName(), 4);
+}
+
+bool Module::applyPreset (const juce::String& name, int patternBeats)
+{
+    const auto index = findModulePreset (getType(), name.toStdString());
+
+    if (index < 0)
+        return false;
+
+    const auto& preset = getModulePresets (getType())[(size_t) index];
+    envelope.setNodes (preset.pattern (patternBeats));
+
+    for (const auto& [parameter, value] : preset.parameters)
+        if (juce::isPositiveAndBelow (parameter, maxParameters))
+            setParameter (parameter, value);
+
+    presetName = name;
+    return true;
+}
+
+void Module::updatePatternForGrid (int patternBeats)
+{
+    const auto index = findModulePreset (getType(), presetName.toStdString());
+
+    if (index >= 0)
+    {
+        const auto& preset = getModulePresets (getType())[(size_t) index];
+
+        if (preset.followsGrid)
+            envelope.setNodes (preset.pattern (patternBeats));
+    }
 }
 
 void Module::prepare (double newSampleRate, int maxBlockSize, int numChannels)
@@ -46,14 +79,7 @@ void Module::process (juce::AudioBuffer<float>& buffer, const double* phases, in
 //==============================================================================
 VolumeModule::VolumeModule()
 {
-    initialiseParameters();
-    envelope.setNodes (getDefaultPattern());
-    presetName = "Sidechain Pulse";
-}
-
-std::vector<beatshaper::Node> VolumeModule::getDefaultPattern() const
-{
-    return getFactoryPresets()[(size_t) findPreset ("Sidechain Pulse")].nodes;
+    initialise();
 }
 
 void VolumeModule::processEffect (juce::AudioBuffer<float>& buffer, const float* envelopeValues, int numSamples) noexcept
@@ -73,9 +99,7 @@ void VolumeModule::processEffect (juce::AudioBuffer<float>& buffer, const float*
 //==============================================================================
 ReverbModule::ReverbModule()
 {
-    initialiseParameters();
-    envelope.setNodes (getDefaultPattern());
-    presetName = "Swells";
+    initialise();
 }
 
 std::vector<ModuleParameterSpec> ReverbModule::getParameterSpecs() const
@@ -83,11 +107,6 @@ std::vector<ModuleParameterSpec> ReverbModule::getParameterSpecs() const
     return { { "size", "Size", 0.5f },
              { "decay", "Decay", 0.7f },
              { "tone", "Tone", 0.3f } };
-}
-
-std::vector<beatshaper::Node> ReverbModule::getDefaultPattern() const
-{
-    return getFactoryPresets()[(size_t) findPreset ("Swells")].nodes;
 }
 
 void ReverbModule::prepareEffect (double newSampleRate, int maxBlockSize, int numChannels)
@@ -198,6 +217,17 @@ bool moduleTypeFromId (const juce::String& id, ModuleType& type) noexcept
 std::vector<ModuleType> getAvailableModuleTypes()
 {
     return { ModuleType::volume, ModuleType::reverb };
+}
+
+const char* getModuleTypeDescription (ModuleType type) noexcept
+{
+    switch (type)
+    {
+        case ModuleType::volume: return "Draw the volume over the beat: gates, sidechain, chops.";
+        case ModuleType::reverb: return "Draw how much reverb you hear: swells, throws, gated tails.";
+    }
+
+    return "";
 }
 
 const char* getModuleTypeName (ModuleType type) noexcept

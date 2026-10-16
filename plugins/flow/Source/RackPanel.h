@@ -54,6 +54,31 @@ private:
     void paintButton (juce::Graphics&, bool highlighted, bool down) override;
 };
 
+// Panel flotante para elegir qué módulo agregar.
+class ModulePicker final : public juce::Component
+{
+public:
+    explicit ModulePicker (int width);
+
+    std::function<void (ModuleType)> onPick;
+
+    void paint (juce::Graphics&) override;
+    void mouseMove (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+
+private:
+    juce::Rectangle<int> getTileBounds (int index) const noexcept;
+    int getTileAt (juce::Point<int> position) const noexcept;
+
+    static constexpr int headerHeight = 36;
+    static constexpr int tileHeight = 78;
+    static constexpr int gap = 8;
+
+    std::vector<ModuleType> types;
+    int hovered = -1;
+};
+
 // Lista vertical de módulos (va dentro de un Viewport).
 class RackPanel final : public juce::Component
 {

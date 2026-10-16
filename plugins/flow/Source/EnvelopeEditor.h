@@ -24,8 +24,9 @@ public:
     // Largo del patrón en beats y divisiones de snap por beat (0 = sin snap).
     void setGrid (int patternBeats, int snapPerBeat);
 
-    // Posición de reproducción [0, 1) y si hay que mostrarla.
-    void setPlayhead (float phase, float gain, bool visible);
+    // Posición de reproducción [0, 1), si hay que mostrarla y si está avanzando
+    // (en pausa se dibuja atenuada).
+    void setPlayhead (float phase, float gain, bool visible, bool running);
 
     // Se llama cada vez que el usuario edita la envolvente.
     std::function<void (const std::vector<beatshaper::Node>&)> onChange;
@@ -72,4 +73,5 @@ private:
     float playheadPhase = 0.0f;
     float playheadGain = 1.0f;
     bool playheadVisible = false;
+    bool playheadRunning = false;
 };

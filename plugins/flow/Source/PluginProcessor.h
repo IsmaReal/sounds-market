@@ -58,9 +58,13 @@ public:
     int getSelectedModule() const noexcept { return selectedModule.load(); }
     void setSelectedModule (int index) noexcept;
 
-    // Guardar / cargar todo el rack (presets de usuario).
+    // Guardar / cargar todo el rack (presets generales).
     juce::ValueTree createStateTree() const;
     void restoreStateTree (const juce::ValueTree& state);
+    void loadFactoryRackPreset (int index);
+
+    juce::String getRackPresetName() const;
+    void setRackPresetName (const juce::String& name);
 
     // Libera en el hilo de mensajes las cadenas que el audio ya dejó de usar.
     void collectGarbage();
@@ -74,15 +78,18 @@ public:
     int getPatternBeats() const noexcept { return patternBeats.load(); }
     void setPatternBeats (int beats) noexcept { patternBeats.store (juce::jlimit (1, 16, beats)); }
 
+    // Cambia el largo del patrón y regenera los presets de módulo que siguen la grilla.
+    void changePatternBeats (int beats);
+
     int getSnapPerBeat() const noexcept { return snapPerBeat.load(); }
     void setSnapPerBeat (int divisions) noexcept { snapPerBeat.store (juce::jmax (0, divisions)); }
 
     int getCurveMode() const noexcept { return curveMode.load(); }
     void setCurveMode (int mode) noexcept { curveMode.store (juce::jlimit (0, 2, mode)); }
 
-    // Posición actual en el patrón [0, 1) y estado del transporte, para la UI.
+    // Posición actual en el patrón [0, 1) y si el patrón está avanzando, para la UI.
     float getDisplayPhase() const noexcept { return displayPhase.load(); }
-    bool isHostPlaying() const noexcept { return hostPlaying.load(); }
+    bool isClockRunning() const noexcept { return clockRunning.load(); }
 
 private:
     void publishRack(); // requiere rackLock tomado
@@ -91,6 +98,7 @@ private:
     // Rack autoritativo (UI / estado).
     mutable juce::CriticalSection rackLock;
     Chain rack;
+    juce::String rackPresetName { "Init" };
 
     // Entrega de la cadena al hilo de audio sin bloquearlo.
     juce::SpinLock chainLock;
@@ -110,7 +118,7 @@ private:
     std::vector<double> phaseBuffer;
 
     std::atomic<float> displayPhase { 0.0f };
-    std::atomic<bool> hostPlaying { false };
+    std::atomic<bool> clockRunning { false };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FlowProcessor)
 };

@@ -24,7 +24,6 @@ namespace
 int main()
 {
     using namespace beatshaper;
-    using flow::getFactoryPresets;
 
     {
         Envelope env;
@@ -79,17 +78,45 @@ int main()
         check (near (table[0], 0.0) && near (table[8], 0.5) && near (table[16], 1.0), "tabla renderizada");
     }
 
-    for (const auto& preset : getFactoryPresets())
+    // Presets de módulo: todos válidos para cualquier largo de patrón.
+    for (auto type : { flow::ModuleType::volume, flow::ModuleType::reverb })
     {
-        Envelope env;
-        env.setNodes (preset.nodes);
-        check (env.getNodes().size() == preset.nodes.size(), preset.name.c_str());
-
-        for (int i = 0; i <= 100; ++i)
+        for (const auto& preset : flow::getModulePresets (type))
         {
-            const auto v = env.evaluate (i / 100.0);
-            check (v >= 0.0 && v <= 1.0, "preset dentro de rango");
+            for (int beats : { 1, 2, 4, 8 })
+            {
+                Envelope env;
+                env.setNodes (preset.pattern (beats));
+                check (env.getNodes().size() >= 2, preset.name.c_str());
+
+                for (int i = 0; i <= 200; ++i)
+                {
+                    const auto v = env.evaluate (i / 200.0);
+                    check (v >= 0.0 && v <= 1.0, "preset dentro de rango");
+                }
+            }
         }
+    }
+
+    {
+        // Los básicos siguen la figura musical: Gate 1/4 en 4 beats abre y cierra cada negra.
+        const auto& list = flow::getModulePresets (flow::ModuleType::volume);
+        const auto gate = flow::findModulePreset (flow::ModuleType::volume, "Gate 1/4");
+        check (gate >= 0 && list[(size_t) gate].category == "Gate", "existe Gate 1/4");
+
+        Envelope env;
+        env.setNodes (list[(size_t) gate].pattern (4));
+        check (near (env.evaluate (0.1), 1.0) && near (env.evaluate (0.2), 0.0), "Gate 1/4: primera negra");
+        check (near (env.evaluate (0.85), 1.0) && near (env.evaluate (0.95), 0.0), "Gate 1/4: última negra");
+
+        // Con un patrón de 2 beats, Gate 1/4 sigue siendo de negras (2 pasos).
+        env.setNodes (list[(size_t) gate].pattern (2));
+        check (near (env.evaluate (0.2), 1.0) && near (env.evaluate (0.4), 0.0) && near (env.evaluate (0.6), 1.0),
+               "Gate 1/4 con grid de 2 beats");
+
+        check (list.front().name == "Init", "el primer preset es Init");
+        check (flow::findModulePreset (flow::ModuleType::reverb, "Swells") >= 0, "Swells disponible en reverb");
+        check (flow::findModulePreset (flow::ModuleType::volume, "Sidechain 1/8T") >= 0, "Sidechain en tresillos");
     }
 
     if (failures == 0)

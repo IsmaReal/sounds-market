@@ -188,21 +188,113 @@ void AddModuleButton::paintButton (juce::Graphics& g, bool highlighted, bool dow
 }
 
 //==============================================================================
+ModulePicker::ModulePicker (int width)
+{
+    types = getAvailableModuleTypes();
+    setSize (width, headerHeight + (int) types.size() * (tileHeight + gap) + 8);
+    setMouseCursor (juce::MouseCursor::PointingHandCursor);
+}
+
+juce::Rectangle<int> ModulePicker::getTileBounds (int index) const noexcept
+{
+    return { 8, headerHeight + index * (tileHeight + gap), getWidth() - 16, tileHeight };
+}
+
+int ModulePicker::getTileAt (juce::Point<int> position) const noexcept
+{
+    for (int i = 0; i < (int) types.size(); ++i)
+        if (getTileBounds (i).contains (position))
+            return i;
+
+    return -1;
+}
+
+void ModulePicker::paint (juce::Graphics& g)
+{
+    g.setColour (colours::textMuted);
+    g.setFont (spacedFont (12.0f, false, 0.3f));
+    g.drawText ("ADD MODULE", getLocalBounds().removeFromTop (headerHeight).reduced (14, 0),
+                juce::Justification::centredLeft);
+
+    for (int i = 0; i < (int) types.size(); ++i)
+    {
+        const auto tile = getTileBounds (i).toFloat();
+        const auto active = i == hovered;
+
+        g.setColour (active ? colours::cardSelected : colours::card);
+        g.fillRoundedRectangle (tile, 8.0f);
+        g.setColour (active ? colours::accent : colours::outline);
+        g.drawRoundedRectangle (tile.reduced (0.5f), 8.0f, active ? 1.5f : 1.0f);
+
+        // Ícono en un cuadrado
+        auto content = tile.reduced (14.0f, 12.0f);
+        const auto iconBox = content.removeFromLeft (content.getHeight());
+        g.setColour (colours::field);
+        g.fillRoundedRectangle (iconBox, 6.0f);
+        drawModuleIcon (g, types[(size_t) i], iconBox.reduced (iconBox.getWidth() * 0.2f),
+                        active ? colours::accent : colours::accent.withAlpha (0.75f));
+
+        content.removeFromLeft (14.0f);
+        g.setColour (colours::text);
+        g.setFont (spacedFont (16.0f, true, 0.2f));
+        g.drawText (juce::String (getModuleTypeName (types[(size_t) i])).toUpperCase(),
+                    content.removeFromTop (content.getHeight() * 0.45f), juce::Justification::bottomLeft);
+
+        g.setColour (colours::textMuted);
+        g.setFont (juce::FontOptions (13.0f));
+        g.drawFittedText (getModuleTypeDescription (types[(size_t) i]), content.toNearestInt().withTrimmedTop (4),
+                          juce::Justification::topLeft, 2, 1.0f);
+    }
+}
+
+void ModulePicker::mouseMove (const juce::MouseEvent& e)
+{
+    const auto tile = getTileAt (e.getPosition());
+
+    if (tile != hovered)
+    {
+        hovered = tile;
+        repaint();
+    }
+}
+
+void ModulePicker::mouseExit (const juce::MouseEvent&)
+{
+    hovered = -1;
+    repaint();
+}
+
+void ModulePicker::mouseUp (const juce::MouseEvent& e)
+{
+    const auto tile = getTileAt (e.getPosition());
+
+    if (tile < 0)
+        return;
+
+    if (onPick)
+        onPick (types[(size_t) tile]);
+
+    if (auto* box = findParentComponentOfClass<juce::CallOutBox>())
+        box->dismiss();
+}
+
+//==============================================================================
 RackPanel::RackPanel()
 {
     addButton.onClick = [this] {
-        juce::PopupMenu menu;
-        menu.setLookAndFeel (&getLookAndFeel());
-        const auto types = getAvailableModuleTypes();
-
-        for (size_t i = 0; i < types.size(); ++i)
-            menu.addItem ((int) i + 1, getModuleTypeName (types[i]));
-
+        // Panel flotante con una tarjeta por tipo de módulo, apuntando al botón.
+        auto* parent = getTopLevelComponent();
+        auto picker = std::make_unique<ModulePicker> (juce::jmax (300, addButton.getWidth() - 20));
         juce::Component::SafePointer<RackPanel> safeThis (this);
-        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&addButton), [safeThis, types] (int result) {
-            if (safeThis != nullptr && result > 0 && safeThis->onAdd)
-                safeThis->onAdd (types[(size_t) result - 1]);
-        });
+
+        picker->onPick = [safeThis] (ModuleType type) {
+            if (safeThis != nullptr && safeThis->onAdd)
+                safeThis->onAdd (type);
+        };
+
+        juce::CallOutBox::launchAsynchronously (std::move (picker),
+                                                parent->getLocalArea (&addButton, addButton.getLocalBounds()),
+                                                parent);
     };
 
     addAndMakeVisible (addButton);

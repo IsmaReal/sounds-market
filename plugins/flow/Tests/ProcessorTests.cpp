@@ -91,6 +91,33 @@ int main()
     processor.setPatternBeats (4);
 
     //==============================================================================
+    // DAW en pausa: el patrón queda quieto en la posición del cursor.
+    playHead.playing = false;
+    runConstantAt (2.5);
+    const auto pausedPhase = processor.getDisplayPhase();
+    runConstantAt (2.5);
+    runConstantAt (2.5);
+    check (std::abs (processor.getDisplayPhase() - pausedPhase) < 1.0e-6f, "pausa: la barra no avanza");
+    check (! processor.isClockRunning(), "pausa: reloj detenido");
+    check (near (runConstantAt (2.5), 0.0f), "pausa: aplica el valor de la posición del cursor");
+    playHead.playing = true;
+    runConstantAt (0.0);
+    check (processor.isClockRunning(), "reproduciendo: reloj en marcha");
+
+    // Presets de módulo que siguen la grilla.
+    check (rack[0]->applyPreset ("Gate 1/4", processor.getPatternBeats()), "aplicar Gate 1/4");
+    processor.changePatternBeats (2);
+    {
+        beatshaper::Envelope env;
+        env.setNodes (rack[0]->envelope.getNodes());
+        check (near ((float) env.evaluate (0.2), 1.0f) && near ((float) env.evaluate (0.4), 0.0f),
+               "Gate 1/4 se regenera al cambiar el grid");
+    }
+    processor.changePatternBeats (4);
+    rack[0]->envelope.setNodes (halfGate);
+    rack[0]->presetName = {};
+
+    //==============================================================================
     // Reverb: agrega cola donde la envolvente está alta.
     check (processor.addModule (flow::ModuleType::reverb), "agregar reverb");
     rack = processor.getRack();
