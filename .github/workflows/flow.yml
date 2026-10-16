@@ -41,7 +41,7 @@ jobs:
             libxcursor-dev libxcomposite-dev libxext-dev libfreetype-dev libfontconfig1-dev
 
       - name: Configurar
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DFLOW_COPY_AFTER_BUILD=OFF
 
       - name: Compilar
         run: cmake --build build --config Release --parallel 4

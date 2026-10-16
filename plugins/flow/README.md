@@ -101,11 +101,25 @@ cmake --build build --config Release
 JUCE se descarga solo la primera vez. Si ya lo tenés clonado podés usar
 `-DJUCE_DIR=/ruta/a/JUCE`.
 
-El VST3 queda en `build/Flow_artefacts/Release/VST3/Flow.vst3`. Copialo a:
+Al terminar de compilar, el plugin **se instala solo** en la carpeta de plugins del sistema:
 
-- Windows: `C:\Program Files\Common Files\VST3\`
-- macOS: `~/Library/Audio/Plug-Ins/VST3/` (y el `.component` en `~/Library/Audio/Plug-Ins/Components/`)
+- Windows: `C:\Program Files\Common Files\VST3\Flow.vst3`
+- macOS: `~/Library/Audio/Plug-Ins/VST3/` (y el AU en `~/Library/Audio/Plug-Ins/Components/`)
 - Linux: `~/.vst3/`
+
+En Windows esa carpeta necesita permisos de administrador. Para no tener que abrir la
+terminal como administrador cada vez, dale permiso de escritura a tu usuario **una sola vez**
+desde una PowerShell abierta como administrador:
+
+```powershell
+icacls "C:\Program Files\Common Files\VST3" /grant "${env:USERNAME}:(OI)(CI)M"
+```
+
+Si no querés que se copie, configurá con `-DFLOW_COPY_AFTER_BUILD=OFF`; el VST3 queda en
+`build/Flow_artefacts/<Debug|Release>/VST3/Flow.vst3`.
+
+Antes de compilar, cerrá el plugin en el DAW (o el proyecto): si está cargado, Windows bloquea
+el archivo y la copia falla.
 
 En FL Studio: *Options → Manage plugins → Find plugins*, y después cargalo como efecto en
 un canal del mixer.

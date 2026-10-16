@@ -7,6 +7,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(FLOW_BUILD_TESTS "Compilar los tests de la envolvente" ON)
 
+# Copia el plugin a la carpeta de plugins del sistema después de cada compilación
+# (en Windows: C:\Program Files\Common Files\VST3). El CI lo desactiva.
+option(FLOW_COPY_AFTER_BUILD "Instalar el plugin en la carpeta del sistema al compilar" ON)
+
 # JUCE: si ya lo tenés clonado, pasá -DJUCE_DIR=/ruta/a/JUCE; si no, se descarga solo.
 set(JUCE_DIR "" CACHE PATH "Ruta a una copia local de JUCE (opcional)")
 
@@ -38,7 +42,7 @@ juce_add_plugin(Flow
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
-    COPY_PLUGIN_AFTER_BUILD FALSE
+    COPY_PLUGIN_AFTER_BUILD ${FLOW_COPY_AFTER_BUILD}
     VST3_CATEGORIES Fx Dynamics Reverb)
 
 set(FLOW_SOURCES
