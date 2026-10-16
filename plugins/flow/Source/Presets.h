@@ -5,8 +5,11 @@
 #include <string>
 #include <vector>
 
-namespace beatshaper
+// Patrones de fábrica. Se aplican a la envolvente del módulo seleccionado.
+namespace flow
 {
+
+using beatshaper::Node;
 
 struct Preset
 {
@@ -35,7 +38,7 @@ namespace detail
         return n;
     }
 
-    // Efecto "sidechain": cae a `depth` al inicio de cada paso y vuelve con una curva.
+    // "Sidechain": cae a `depth` al inicio de cada paso y vuelve con una curva.
     inline std::vector<Node> pump (int steps, float depth)
     {
         std::vector<Node> n;
@@ -50,19 +53,38 @@ namespace detail
 
         return n;
     }
+
+    // Crece con una curva hasta un pico cerca del final de cada paso y cae de golpe.
+    inline std::vector<Node> swells (int steps, double peakAt, float peak)
+    {
+        std::vector<Node> n;
+        const auto step = 1.0 / steps;
+
+        for (int i = 0; i < steps; ++i)
+        {
+            const auto start = i * step;
+            n.push_back ({ start, 0.0f, 0.5f });
+            n.push_back ({ start + step * peakAt, peak, 0.0f });
+        }
+
+        n.push_back ({ 1.0, 0.0f, 0.0f });
+        return n;
+    }
 }
 
 inline const std::vector<Preset>& getFactoryPresets()
 {
     static const std::vector<Preset> presets = [] {
         std::vector<Preset> p;
-        p.push_back ({ "Plano (sin efecto)", { { 0.0, 1.0f, 0.0f }, { 1.0, 1.0f, 0.0f } } });
-        p.push_back ({ "Sidechain negras", detail::pump (4, 0.0f) });
-        p.push_back ({ "Sidechain corcheas", detail::pump (8, 0.15f) });
+        p.push_back ({ "Init (Flat)", { { 0.0, 1.0f, 0.0f }, { 1.0, 1.0f, 0.0f } } });
+        p.push_back ({ "Sidechain Pulse", detail::pump (4, 0.0f) });
+        p.push_back ({ "Sidechain 1/8", detail::pump (8, 0.15f) });
+        p.push_back ({ "Swells", detail::swells (4, 0.85, 0.9f) });
+        p.push_back ({ "Swells 1/8", detail::swells (8, 0.8, 0.85f) });
         p.push_back ({ "Gate 1/4", detail::gate (4, 0.5) });
         p.push_back ({ "Gate 1/8", detail::gate (8, 0.5) });
         p.push_back ({ "Gate 1/16", detail::gate (16, 0.5) });
-        p.push_back ({ "Trance gate", { { 0.0, 1.0f, 0.0f }, { 0.125, 1.0f, 0.0f }, { 0.125, 0.0f, 0.0f },
+        p.push_back ({ "Trance Gate", { { 0.0, 1.0f, 0.0f }, { 0.125, 1.0f, 0.0f }, { 0.125, 0.0f, 0.0f },
                                          { 0.1875, 0.0f, 0.0f }, { 0.1875, 1.0f, 0.0f }, { 0.25, 1.0f, 0.0f },
                                          { 0.25, 0.0f, 0.0f }, { 0.375, 0.0f, 0.0f }, { 0.375, 1.0f, 0.0f },
                                          { 0.4375, 1.0f, 0.0f }, { 0.4375, 0.0f, 0.0f }, { 0.5, 0.0f, 0.0f },
@@ -70,14 +92,27 @@ inline const std::vector<Preset>& getFactoryPresets()
                                          { 0.6875, 0.0f, 0.0f }, { 0.6875, 1.0f, 0.0f }, { 0.8125, 1.0f, 0.0f },
                                          { 0.8125, 0.0f, 0.0f }, { 0.875, 0.0f, 0.0f }, { 0.875, 1.0f, 0.0f },
                                          { 0.9375, 1.0f, 0.0f }, { 0.9375, 0.0f, 0.0f }, { 1.0, 0.0f, 0.0f } } });
-        p.push_back ({ "Fade in (1 compás)", { { 0.0, 0.0f, 0.5f }, { 1.0, 1.0f, 0.0f } } });
-        p.push_back ({ "Fade out (1 compás)", { { 0.0, 1.0f, 0.5f }, { 1.0, 0.0f, 0.0f } } });
-        p.push_back ({ "Corte último beat", { { 0.0, 1.0f, 0.0f }, { 0.75, 1.0f, 0.0f },
-                                               { 0.75, 0.0f, 0.0f }, { 1.0, 0.0f, 0.0f } } });
+        p.push_back ({ "Fade In", { { 0.0, 0.0f, 0.5f }, { 1.0, 1.0f, 0.0f } } });
+        p.push_back ({ "Fade Out", { { 0.0, 1.0f, 0.5f }, { 1.0, 0.0f, 0.0f } } });
+        p.push_back ({ "Last Beat Cut", { { 0.0, 1.0f, 0.0f }, { 0.75, 1.0f, 0.0f },
+                                           { 0.75, 0.0f, 0.0f }, { 1.0, 0.0f, 0.0f } } });
+        p.push_back ({ "Last Beat Only", { { 0.0, 0.0f, 0.0f }, { 0.75, 0.0f, 0.0f },
+                                            { 0.75, 1.0f, 0.0f }, { 1.0, 1.0f, 0.0f } } });
         return p;
     }();
 
     return presets;
 }
 
-} // namespace beatshaper
+inline int findPreset (const std::string& name)
+{
+    const auto& presets = getFactoryPresets();
+
+    for (size_t i = 0; i < presets.size(); ++i)
+        if (presets[i].name == name)
+            return (int) i;
+
+    return 0;
+}
+
+} // namespace flow

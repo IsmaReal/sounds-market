@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(BeatShaper VERSION 0.1.0 LANGUAGES C CXX)
+project(Flow VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-option(BEATSHAPER_BUILD_TESTS "Compilar los tests de la envolvente" ON)
+option(FLOW_BUILD_TESTS "Compilar los tests de la envolvente" ON)
 
 # JUCE: si ya lo tenés clonado, pasá -DJUCE_DIR=/ruta/a/JUCE; si no, se descarga solo.
 set(JUCE_DIR "" CACHE PATH "Ruta a una copia local de JUCE (opcional)")
@@ -21,38 +21,44 @@ else()
     FetchContent_MakeAvailable(JUCE)
 endif()
 
-set(BEATSHAPER_FORMATS VST3 Standalone)
+set(FLOW_FORMATS VST3 Standalone)
 if(APPLE)
-    list(APPEND BEATSHAPER_FORMATS AU)
+    list(APPEND FLOW_FORMATS AU)
 endif()
 
-juce_add_plugin(BeatShaper
+juce_add_plugin(Flow
     COMPANY_NAME "Sounds Market"
-    PRODUCT_NAME "Beat Shaper"
+    PRODUCT_NAME "Flow"
     PLUGIN_MANUFACTURER_CODE SdMk
-    PLUGIN_CODE BtSh
-    BUNDLE_ID com.soundsmarket.beatshaper
-    FORMATS ${BEATSHAPER_FORMATS}
+    PLUGIN_CODE Flw1
+    BUNDLE_ID com.soundsmarket.flow
+    FORMATS ${FLOW_FORMATS}
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     COPY_PLUGIN_AFTER_BUILD FALSE
-    VST3_CATEGORIES Fx Dynamics)
+    VST3_CATEGORIES Fx Dynamics Reverb)
 
-target_sources(BeatShaper PRIVATE
+set(FLOW_SOURCES
+    Source/Modules.cpp
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
-    Source/EnvelopeEditor.cpp)
+    Source/EnvelopeEditor.cpp
+    Source/FlowLookAndFeel.cpp
+    Source/RackPanel.cpp
+    Source/ModuleControls.cpp)
 
-target_compile_definitions(BeatShaper PUBLIC
+target_sources(Flow PRIVATE ${FLOW_SOURCES})
+
+target_compile_definitions(Flow PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
     JUCE_DISPLAY_SPLASH_SCREEN=0)
 
-target_link_libraries(BeatShaper
+target_link_libraries(Flow
     PRIVATE
         juce::juce_audio_utils
     PUBLIC
@@ -60,22 +66,19 @@ target_link_libraries(BeatShaper
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
 
-if(BEATSHAPER_BUILD_TESTS)
+if(FLOW_BUILD_TESTS)
     enable_testing()
     add_executable(EnvelopeTests Tests/EnvelopeTests.cpp)
     target_include_directories(EnvelopeTests PRIVATE Source)
+    target_compile_features(EnvelopeTests PRIVATE cxx_std_17)
     add_test(NAME EnvelopeTests COMMAND EnvelopeTests)
 
     # Simula un host reproduciendo y verifica el gain que aplica el procesador.
     juce_add_console_app(ProcessorTests PRODUCT_NAME "ProcessorTests")
-    target_sources(ProcessorTests PRIVATE
-        Tests/ProcessorTests.cpp
-        Source/PluginProcessor.cpp
-        Source/PluginEditor.cpp
-        Source/EnvelopeEditor.cpp)
+    target_sources(ProcessorTests PRIVATE Tests/ProcessorTests.cpp ${FLOW_SOURCES})
     target_include_directories(ProcessorTests PRIVATE Source)
     target_compile_definitions(ProcessorTests PRIVATE
-        JucePlugin_Name="Beat Shaper"
+        JucePlugin_Name="Flow"
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0)
     target_link_libraries(ProcessorTests PRIVATE

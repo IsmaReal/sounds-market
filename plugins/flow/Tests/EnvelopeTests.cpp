@@ -24,6 +24,7 @@ namespace
 int main()
 {
     using namespace beatshaper;
+    using flow::getFactoryPresets;
 
     {
         Envelope env;

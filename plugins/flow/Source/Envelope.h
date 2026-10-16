@@ -5,7 +5,7 @@
 #include <vector>
 
 // Modelo puro (sin JUCE) de la envolvente de volumen.
-// El eje X va de 0 a 1 y cubre el patrón completo (4 beats).
+// El eje X va de 0 a 1 y cubre el patrón completo (por defecto, 4 beats).
 // El eje Y es la ganancia, de 0 (silencio) a 1 (volumen original).
 // Cada nodo guarda la curvatura del segmento que sale de él hacia el siguiente.
 namespace beatshaper
@@ -21,7 +21,6 @@ struct Node
 class Envelope
 {
 public:
-    static constexpr int patternBeats = 4;
     static constexpr float maxCurveExponent = 16.0f;
 
     Envelope() { setFlat (1.0f); }

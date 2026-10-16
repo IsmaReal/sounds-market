@@ -1,26 +1,22 @@
 #include "EnvelopeEditor.h"
 
+#include "FlowLookAndFeel.h"
+
 namespace
 {
     namespace colours
     {
-        const juce::Colour background { 0xff15151c };
-        const juce::Colour beatEven { 0xff1c1c26 };
-        const juce::Colour beatOdd { 0xff191921 };
-        const juce::Colour gridMajor { 0xff3a3a4a };
-        const juce::Colour gridMinor { 0xff26262f };
-        const juce::Colour label { 0xff8a8a9c };
-        const juce::Colour accent { 0xffff8a3d };
-        const juce::Colour node { 0xfffff1e6 };
-        const juce::Colour curveHandle { 0xff7fd1ff };
-        const juce::Colour playhead { 0xff6dffb0 };
+        using namespace flow::ui::colours;
+        const juce::Colour node { 0xff1a2620 };
+        const juce::Colour curveHandle { 0xffbfeed0 };
+        const juce::Colour playhead { 0xffe4e8ee };
     }
 
     constexpr float nodeRadius = 5.0f;
     constexpr float hitRadius = 9.0f;
-    constexpr float leftMargin = 40.0f;
-    constexpr float topMargin = 22.0f;
-    constexpr float padding = 8.0f;
+    constexpr float leftMargin = 52.0f;
+    constexpr float topMargin = 40.0f;
+    constexpr float padding = 14.0f;
 }
 
 EnvelopeEditor::EnvelopeEditor()
@@ -41,9 +37,10 @@ void EnvelopeEditor::setNodes (const std::vector<beatshaper::Node>& newNodes)
     repaint();
 }
 
-void EnvelopeEditor::setSnapDivisions (int divisions)
+void EnvelopeEditor::setGrid (int beats, int snapPerBeat)
 {
-    snapDivisions = juce::jmax (0, divisions);
+    patternBeats = juce::jmax (1, beats);
+    snapDivisions = juce::jmax (0, snapPerBeat) * patternBeats;
     repaint();
 }
 
@@ -297,7 +294,11 @@ void EnvelopeEditor::mouseDoubleClick (const juce::MouseEvent& e)
 //==============================================================================
 void EnvelopeEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (colours::background);
+    const auto bounds = getLocalBounds().toFloat().reduced (0.5f);
+    g.setColour (colours::field);
+    g.fillRoundedRectangle (bounds, 6.0f);
+    g.setColour (colours::outline);
+    g.drawRoundedRectangle (bounds, 6.0f, 1.0f);
 
     const auto area = getGridArea();
     drawGrid (g, area);
@@ -306,50 +307,66 @@ void EnvelopeEditor::paint (juce::Graphics& g)
 
 void EnvelopeEditor::drawGrid (juce::Graphics& g, juce::Rectangle<float> area)
 {
-    constexpr auto beats = beatshaper::Envelope::patternBeats;
-    const auto beatWidth = area.getWidth() / beats;
-
-    for (int b = 0; b < beats; ++b)
-    {
-        const auto column = area.withX (area.getX() + b * beatWidth).withWidth (beatWidth);
-        g.setColour (b % 2 == 0 ? colours::beatEven : colours::beatOdd);
-        g.fillRect (column);
-
-        g.setColour (colours::label);
-        g.setFont (juce::FontOptions (13.0f, juce::Font::bold));
-        g.drawText (juce::String (b + 1), column.withY (0).withHeight (topMargin).reduced (4, 0),
-                    juce::Justification::centredLeft);
-    }
+    const auto beats = patternBeats;
+    const auto beatWidth = area.getWidth() / (float) beats;
 
     // Subdivisiones según el snap (o semicorcheas si el snap está apagado).
-    const auto divisions = snapDivisions > 0 ? snapDivisions : 16;
-    g.setColour (colours::gridMinor);
+    const auto divisions = snapDivisions > 0 ? snapDivisions : beats * 4;
+    const juce::PathStrokeType thin (1.0f);
+    const float dashes[] = { 2.0f, 4.0f };
 
     for (int d = 1; d < divisions; ++d)
     {
         const auto x = area.getX() + area.getWidth() * (float) d / (float) divisions;
-        g.drawVerticalLine (juce::roundToInt (x), area.getY(), area.getBottom());
+        juce::Path line, dashed;
+        line.startNewSubPath (x, area.getY());
+        line.lineTo (x, area.getBottom());
+        thin.createDashedStroke (dashed, line, dashes, 2);
+        g.setColour (colours::gridMinor);
+        g.fillPath (dashed);
     }
 
-    g.setColour (colours::gridMajor);
-
-    for (int b = 0; b <= beats; ++b)
-        g.drawVerticalLine (juce::roundToInt (juce::jmin (area.getX() + b * beatWidth, area.getRight() - 1.0f)),
-                            area.getY(), area.getBottom());
-
-    // Líneas horizontales de volumen.
-    g.setFont (juce::FontOptions (11.0f));
-
-    for (int level = 0; level <= 4; ++level)
+    // Líneas horizontales de valor.
+    for (int level = 1; level < 8; ++level)
     {
-        const auto y = area.getBottom() - area.getHeight() * (float) level / 4.0f;
-        g.setColour (level == 0 || level == 4 ? colours::gridMajor : colours::gridMinor);
-        g.drawHorizontalLine (juce::roundToInt (juce::jmin (y, area.getBottom() - 1.0f)), area.getX(), area.getRight());
+        const auto y = area.getBottom() - area.getHeight() * (float) level / 8.0f;
+        juce::Path line, dashed;
+        line.startNewSubPath (area.getX(), y);
+        line.lineTo (area.getRight(), y);
+        thin.createDashedStroke (dashed, line, dashes, 2);
+        g.setColour (level == 4 ? colours::gridMajor.withAlpha (0.8f) : colours::gridMinor);
+        g.fillPath (dashed);
+    }
 
-        g.setColour (colours::label);
-        g.drawText (juce::String (level * 25) + "%",
-                    juce::Rectangle<float> (0.0f, y - 7.0f, leftMargin - 6.0f, 14.0f),
+    // Beats: línea completa desde arriba de la grilla y número.
+    for (int b = 0; b < beats; ++b)
+    {
+        const auto x = area.getX() + (float) b * beatWidth;
+        g.setColour (colours::gridMajor);
+        g.drawLine (x, area.getY() - topMargin + 10.0f, x, area.getBottom(), 1.0f);
+
+        g.setColour (colours::text.withAlpha (0.85f));
+        g.setFont (juce::FontOptions (15.0f));
+        g.drawText (juce::String (b + 1), juce::Rectangle<float> (x + 8.0f, area.getY() - topMargin + 10.0f, 40.0f, 22.0f),
+                    juce::Justification::centredLeft);
+    }
+
+    // Línea de referencia arriba de los números y base.
+    g.setColour (colours::gridMajor);
+    g.drawLine (area.getX(), area.getY() - 6.0f, area.getRight(), area.getY() - 6.0f, 1.0f);
+    g.setColour (colours::gridMajor.withAlpha (0.8f));
+    g.drawLine (area.getX(), area.getBottom(), area.getRight(), area.getBottom(), 1.0f);
+
+    // Etiquetas del eje Y.
+    g.setColour (colours::textMuted);
+    g.setFont (juce::FontOptions (14.0f));
+
+    for (auto [value, text] : { std::pair { 1.0f, "1.0" }, std::pair { 0.5f, "0.5" }, std::pair { 0.0f, "0.0" } })
+    {
+        const auto y = area.getBottom() - area.getHeight() * value;
+        g.drawText (text, juce::Rectangle<float> (0.0f, y - 9.0f, leftMargin - 14.0f, 18.0f),
                     juce::Justification::centredRight);
+        g.drawLine (area.getX() - 6.0f, y, area.getX(), y, 1.0f);
     }
 }
 
@@ -380,12 +397,14 @@ void EnvelopeEditor::drawEnvelope (juce::Graphics& g, juce::Rectangle<float> are
     fill.lineTo (area.getBottomLeft());
     fill.closeSubPath();
 
-    g.setGradientFill (juce::ColourGradient (colours::accent.withAlpha (0.45f), area.getTopLeft(),
-                                             colours::accent.withAlpha (0.05f), area.getBottomLeft(), false));
+    g.setGradientFill (juce::ColourGradient (colours::accent.withAlpha (0.32f), area.getTopLeft(),
+                                             colours::accent.withAlpha (0.04f), area.getBottomLeft(), false));
     g.fillPath (fill);
 
+    g.setColour (colours::accent.withAlpha (0.25f));
+    g.strokePath (line, juce::PathStrokeType (7.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     g.setColour (colours::accent);
-    g.strokePath (line, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.strokePath (line, juce::PathStrokeType (2.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
     // Puntos de curva.
     for (int i = 0; i + 1 < (int) nodes.size(); ++i)
@@ -401,37 +420,45 @@ void EnvelopeEditor::drawEnvelope (juce::Graphics& g, juce::Rectangle<float> are
         const auto p = curveHandlePosition (i);
         const auto r = active ? 4.5f : 3.0f;
 
-        g.setColour (colours::curveHandle.withAlpha (active ? 1.0f : 0.7f));
+        g.setColour (colours::curveHandle.withAlpha (active ? 1.0f : 0.45f));
         g.drawEllipse (p.x - r, p.y - r, r * 2, r * 2, 1.5f);
     }
 
-    // Nodos.
+    // Nodos: círculo oscuro con borde verde, como en la referencia.
     for (int i = 0; i < (int) nodes.size(); ++i)
     {
         const auto p = toScreen (nodes[(size_t) i].x, nodes[(size_t) i].y);
         const auto active = (hovered.type == TargetType::node && hovered.index == i)
                          || (dragging.type == TargetType::node && dragging.index == i);
-        const auto r = active ? nodeRadius + 1.5f : nodeRadius;
+        const auto r = active ? nodeRadius + 2.0f : nodeRadius + 0.5f;
 
-        g.setColour (colours::background);
-        g.fillEllipse (p.x - r - 1.5f, p.y - r - 1.5f, (r + 1.5f) * 2, (r + 1.5f) * 2);
+        if (active)
+        {
+            g.setColour (colours::accent.withAlpha (0.25f));
+            g.fillEllipse (p.x - r - 5.0f, p.y - r - 5.0f, (r + 5.0f) * 2, (r + 5.0f) * 2);
+        }
+
         g.setColour (active ? colours::accent : colours::node);
         g.fillEllipse (p.x - r, p.y - r, r * 2, r * 2);
+        g.setColour (colours::accent);
+        g.drawEllipse (p.x - r, p.y - r, r * 2, r * 2, 2.2f);
     }
 
     // Etiqueta con posición y volumen del nodo que se está arrastrando.
     if (dragging.type == TargetType::node)
     {
         const auto& n = nodes[(size_t) dragging.index];
-        const auto beat = n.x * beatshaper::Envelope::patternBeats;
-        const auto text = "Beat " + juce::String (1.0 + beat, 2) + "  |  " + juce::String (juce::roundToInt (n.y * 100.0f)) + "%";
+        const auto beat = n.x * patternBeats;
+        const auto text = "Beat " + juce::String (1.0 + beat, 2) + "  |  " + juce::String (n.y, 2);
         const auto p = toScreen (n.x, n.y);
 
         auto box = juce::Rectangle<float> (120.0f, 20.0f).withCentre (p.translated (0.0f, n.y > 0.8f ? 22.0f : -22.0f));
         box = box.constrainedWithin (area);
 
-        g.setColour (juce::Colours::black.withAlpha (0.75f));
+        g.setColour (colours::panel.withAlpha (0.95f));
         g.fillRoundedRectangle (box, 4.0f);
+        g.setColour (colours::outline);
+        g.drawRoundedRectangle (box, 4.0f, 1.0f);
         g.setColour (juce::Colours::white);
         g.setFont (juce::FontOptions (12.0f));
         g.drawText (text, box, juce::Justification::centred);
@@ -441,8 +468,9 @@ void EnvelopeEditor::drawEnvelope (juce::Graphics& g, juce::Rectangle<float> are
     if (playheadVisible)
     {
         const auto p = toScreen (playheadPhase, playheadGain);
-        g.setColour (colours::playhead.withAlpha (0.8f));
+        g.setColour (colours::playhead.withAlpha (0.35f));
         g.drawLine (p.x, area.getY(), p.x, area.getBottom(), 1.5f);
-        g.fillEllipse (p.x - 4.0f, p.y - 4.0f, 8.0f, 8.0f);
+        g.setColour (colours::playhead);
+        g.fillEllipse (p.x - 3.5f, p.y - 3.5f, 7.0f, 7.0f);
     }
 }

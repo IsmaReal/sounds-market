@@ -6,7 +6,7 @@
 
 #include <functional>
 
-// Grilla de 4 beats donde se dibuja la envolvente de volumen con nodos.
+// Grilla de beats donde se dibuja la envolvente de un módulo con nodos.
 //
 //  - Click en un espacio vacío: agrega un nodo (y se puede arrastrar enseguida).
 //  - Arrastrar un nodo: lo mueve. Con Shift se ignora el snap.
@@ -21,8 +21,8 @@ public:
     void setNodes (const std::vector<beatshaper::Node>& newNodes);
     const std::vector<beatshaper::Node>& getNodes() const noexcept { return nodes; }
 
-    // Cantidad de divisiones de la grilla en todo el patrón (0 = sin snap).
-    void setSnapDivisions (int divisions);
+    // Largo del patrón en beats y divisiones de snap por beat (0 = sin snap).
+    void setGrid (int patternBeats, int snapPerBeat);
 
     // Posición de reproducción [0, 1) y si hay que mostrarla.
     void setPlayhead (float phase, float gain, bool visible);
@@ -64,7 +64,8 @@ private:
     beatshaper::Envelope envelope;     // para evaluar la curva al dibujar
     std::vector<beatshaper::Node> nodes; // copia ordenada que se edita
 
-    int snapDivisions = 16;
+    int patternBeats = 4;
+    int snapDivisions = 16; // divisiones en todo el patrón
     Target hovered, dragging;
     bool createdOnThisClick = false;
 
